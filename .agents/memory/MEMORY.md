@@ -1,0 +1,1 @@
+- [Advisory evidence boundaries](advisory-evidence-boundaries.md) — source-only facts and conservative uncertainty in briefs and fallbacks.

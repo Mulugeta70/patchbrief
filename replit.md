@@ -24,7 +24,7 @@ PatchBrief runs an ordered placeholder analysis pipeline and stores each run and
 ## Where things live
 
 - `artifacts/api-server/src/routes/runs.ts` — run creation and retrieval API
-- `artifacts/api-server/src/patchbrief/` — database access, pipeline runner, and placeholder steps
+- `artifacts/api-server/src/patchbrief/` — database access, ordered runner, retry policy, external clients, and review steps
 - `lib/db/src/schema/` — PostgreSQL table definitions
 
 ## Architecture decisions

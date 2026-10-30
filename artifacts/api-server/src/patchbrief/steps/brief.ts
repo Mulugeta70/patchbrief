@@ -1,5 +1,4 @@
 import type { Advisory } from "../clients/advisoryClient";
-import type { ExtractedAdvisory } from "./extract";
 import {
   requirePriorOutput,
   type PipelineStep,
@@ -30,10 +29,6 @@ interface PlanOutput extends Record<string, unknown> {
   checklist: string[];
 }
 
-interface ExtractOutput extends ExtractedAdvisory {
-  output_summary: string;
-}
-
 function renderAffectedItems(items: AssessItem[]): string {
   if (items.length === 0) return "No tracked stack items were confirmed affected.";
   return items
@@ -49,11 +44,10 @@ export const briefStep: PipelineStep = {
   async run(context) {
     return context.attempts.runLocal(async () => {
       const fetched = requirePriorOutput<FetchOutput>(context, "fetch");
-      const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
       const assessment = requirePriorOutput<AssessOutput>(context, "assess");
       const plan = requirePriorOutput<PlanOutput>(context, "plan");
       const advisory = fetched.advisory;
-      const summary = extracted.summary;
+      const summary = advisory.description?.trim() || "No advisory description provided.";
       const cvssLabel =
         assessment.cvss === null ? "CVSS unavailable" : `CVSS ${assessment.cvss}`;
 
@@ -97,9 +91,7 @@ export const briefStep: PipelineStep = {
         "",
         "## References",
         references,
-      ]
-        .filter((line) => line !== "")
-        .join("\n");
+      ].join("\n");
 
       const affectedLabel =
         assessment.affected_items.length > 0

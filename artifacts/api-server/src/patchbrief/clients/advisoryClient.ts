@@ -79,7 +79,6 @@ function readExplicitCvss(description: string): number | null {
   const patterns = [
     /\bCVSS(?:\s+v?\d+\.\d+)?\s+(?:base\s+)?score\s*[:=]?\s*(10(?:\.0)?|[0-9](?:\.\d+)?)\b/i,
     /\bCVSS(?:\s+v?\d+\.\d+)?\s*[:=]\s*(10(?:\.0)?|[0-9](?:\.\d+)?)\b/i,
-    /\bCVSS(?:\s+v?\d+\.\d+)?\s+(10(?:\.0)?|[0-9](?:\.\d+)?)\b/i,
   ];
 
   for (const pattern of patterns) {

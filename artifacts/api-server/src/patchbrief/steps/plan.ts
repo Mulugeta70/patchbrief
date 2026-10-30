@@ -113,6 +113,28 @@ export function createPlanStep(
               "LLM remediation output mentioned a checklist item without naming an affected stack item.",
             );
           }
+          const versionPattern = /\bv?\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?\b/g;
+          const allowedVersions = new Set(
+            [
+              ...assessment.affected_items.map((item) => item.version),
+              extracted.fixed_in ?? "",
+              ...extracted.affected.flatMap((item) => item.versions),
+            ].flatMap((value) =>
+              [...value.matchAll(versionPattern)].map((match) =>
+                match[0].replace(/^v/i, ""),
+              ),
+            ),
+          );
+          const mentionedVersions = checklist.flatMap((item) =>
+            [...item.matchAll(versionPattern)].map((match) =>
+              match[0].replace(/^v/i, ""),
+            ),
+          );
+          if (mentionedVersions.some((version) => !allowedVersions.has(version))) {
+            throw new Error(
+              "LLM remediation output included a version absent from the advisory and affected stack items.",
+            );
+          }
         } catch (error) {
           await context.attempts.markLastAttemptFailed(errorMessage(error), null);
           throw error;

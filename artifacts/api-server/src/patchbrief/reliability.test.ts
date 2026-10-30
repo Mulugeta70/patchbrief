@@ -220,3 +220,26 @@ test("extract falls back to advisory ranges after two invalid outputs", async ()
   assert.equal(markedFailures.length, 2);
   assert.equal(markedFailures[1]?.retryInMs, null);
 });
+
+test("fallback keeps compound range bounds together", async () => {
+  const context = extractContext("Lodash versions >= 1.0.0 < 2.0.0 are affected.");
+  const step = createExtractStep(async () => { throw new Error("LLM unavailable"); });
+  const output = await step.run(context);
+  assert.deepEqual(output.affected, [
+    { product: "lodash", versions: [">=1.0.0 <2.0.0"] },
+  ]);
+});
+
+test("extract never accepts a CVSS score absent from the advisory", async () => {
+  const context = extractContext("No affected products or score were provided.");
+  const step = createExtractStep(async () => JSON.stringify({
+    cve_id: "CVE-2026-12345",
+    summary: "No affected products were provided.",
+    affected: [],
+    fixed_in: null,
+    cvss: 9.8,
+  }));
+  const output = await step.run(context);
+  assert.equal(output.fallback_used, true);
+  assert.equal(output.cvss, null);
+});

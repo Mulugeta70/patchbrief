@@ -81,8 +81,8 @@ function Home() {
             <span className="eyebrow">01 / Input</span>
           </div>
           <label className="input-label" htmlFor="advisory-input">CVE ID or advisory</label>
-          <textarea id="advisory-input" className="input-control advisory-input" value={input} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\n—or paste the vendor advisory here…'} data-testid="input-advisory" />
-          <p className="field-hint">The review will use the supplied text as its source material.</p>
+          <textarea id="advisory-input" className="input-control advisory-input" value={input} maxLength={20000} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\n—or paste the vendor advisory here…'} data-testid="input-advisory" />
+          <p className="field-hint">The supplied text is the source material. {input.length.toLocaleString()} / 20,000 characters.</p>
           {inputError && <div className="error-box" role="alert" data-testid="status-submit-error">{inputError}</div>}
           <button className="submit-button" type="submit" disabled={createRun.isPending} data-testid="button-submit-run">
              <span>{createRun.isPending ? 'Starting review…' : 'Run assessment'}</span>

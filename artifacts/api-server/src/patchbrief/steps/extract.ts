@@ -67,7 +67,7 @@ function validateEvidence(
   advisory: Advisory,
 ): string | null {
   const expectedCveId = sourceCveId(advisory);
-  if (extracted.cve_id?.toUpperCase() !== expectedCveId) {
+  if ((extracted.cve_id?.toUpperCase() ?? null) !== expectedCveId) {
     return "LLM extraction returned a CVE ID that was not present in the advisory.";
   }
 
@@ -156,11 +156,16 @@ function parseValidOutput(
 function versionRangesNearProduct(text: string): string[] {
   const ranges: string[] = [];
   const operatorPattern = new RegExp(
-    String.raw`(?:<=|>=|<|>|=|~|\^)\s*(${versionToken})`,
+    String.raw`(?:<=|>=|<|>|=|~|\^)\s*${versionToken}(?:\s+(?:<=|>=|<|>|=|~|\^)\s*${versionToken})*`,
     "gi",
   );
   for (const match of text.matchAll(operatorPattern)) {
-    ranges.push(match[0].replace(/\s+/g, "").replace(/v(?=\d)/gi, ""));
+    ranges.push(
+      match[0]
+        .replace(/\s+/g, " ")
+        .replace(/(<=|>=|<|>|=|~|\^)\s+/g, "$1")
+        .replace(/v(?=\d)/gi, ""),
+    );
   }
 
   const boundedPattern = new RegExp(
@@ -179,23 +184,22 @@ function versionRangesNearProduct(text: string): string[] {
 function textDerivedAffected(description: string | null): AdvisoryAffectedProduct[] {
   if (!description) return [];
   const entries = new Map<string, Set<string>>();
-  const lower = description.toLowerCase();
-
-  for (const candidate of productAliases) {
-    for (const alias of candidate.aliases) {
-      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const expression = new RegExp(`\\b${escaped}\\b`, "gi");
-      for (const match of lower.matchAll(expression)) {
-        if (match.index === undefined) continue;
-        const from = Math.max(0, match.index - 100);
-        const to = Math.min(description.length, match.index + alias.length + 140);
-        const nearby = description.slice(from, to);
-        const ranges = versionRangesNearProduct(nearby);
-        if (ranges.length === 0) continue;
-        if (!entries.has(candidate.product)) entries.set(candidate.product, new Set());
-        for (const range of ranges) entries.get(candidate.product)?.add(range);
-      }
-    }
+  const sentences = description.split(/[.!?](?:\s+|$)|\n+/);
+  for (const sentence of sentences) {
+    const candidates = productAliases.filter((candidate) =>
+      candidate.aliases.some((alias) => {
+        const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`\\b${escaped}\\b`, "i").test(sentence);
+      }),
+    );
+    // Ambiguous multi-product sentences require structured evidence or review.
+    if (candidates.length !== 1) continue;
+    const candidate = candidates[0];
+    if (!candidate) continue;
+    const ranges = versionRangesNearProduct(sentence);
+    if (ranges.length === 0) continue;
+    if (!entries.has(candidate.product)) entries.set(candidate.product, new Set());
+    for (const range of ranges) entries.get(candidate.product)?.add(range);
   }
 
   return [...entries.entries()].map(([product, versions]) => ({

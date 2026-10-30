@@ -42,7 +42,7 @@ export function errorMessage(error: unknown): string {
 
 export function isTransientFailure(error: unknown): boolean {
   if (error instanceof HttpRequestError) {
-    return error.statusCode === 429 || error.statusCode >= 500;
+    return error.statusCode === 429 || (error.statusCode >= 500 && error.statusCode < 600);
   }
 
   if (error instanceof TypeError) return true;
