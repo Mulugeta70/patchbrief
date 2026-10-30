@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import {
   db,
   runsTable,
@@ -8,6 +8,7 @@ import {
   type Step,
   type StepOutput,
 } from "@workspace/db";
+import { publishFinishedRun, publishStep } from "./events";
 
 const placeholderStack = [
   { name: "node", version: "18" },
@@ -62,10 +63,13 @@ export async function setRunStatus(
   status: string,
   finishedAt?: Date,
 ): Promise<void> {
-  await db
+  const [updatedRun] = await db
     .update(runsTable)
     .set({ status, ...(finishedAt ? { finishedAt } : {}) })
-    .where(eq(runsTable.id, runId));
+    .where(eq(runsTable.id, runId))
+    .returning();
+
+  if (finishedAt && updatedRun) publishFinishedRun(updatedRun);
 }
 
 export async function createRunningStep(
@@ -87,6 +91,7 @@ export async function createRunningStep(
     .returning();
 
   if (!step) throw new Error(`Could not create running step: ${name}`);
+  publishStep(step);
   return step;
 }
 
@@ -101,13 +106,18 @@ export async function finishStep(
     fallbackUsed?: boolean;
   },
 ): Promise<void> {
-  await db
+  const [updatedStep] = await db
     .update(stepsTable)
     .set({
       ...values,
       fallbackUsed: values.fallbackUsed ?? false,
+      updatedAt: new Date(),
     })
-    .where(eq(stepsTable.id, stepId));
+    .where(eq(stepsTable.id, stepId))
+    .returning();
+
+  if (!updatedStep) throw new Error(`Could not finish step: ${stepId}`);
+  publishStep(updatedStep);
 }
 
 export async function getRunWithSteps(
@@ -128,4 +138,18 @@ export async function getRunWithSteps(
     .orderBy(asc(stepsTable.seq));
 
   return { run, steps };
+}
+
+export async function getLatestRunWithSteps(): Promise<{
+  run: Run;
+  steps: Step[];
+} | null> {
+  const [run] = await db
+    .select()
+    .from(runsTable)
+    .orderBy(desc(runsTable.createdAt))
+    .limit(1);
+
+  if (!run) return null;
+  return getRunWithSteps(run.id);
 }

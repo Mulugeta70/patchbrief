@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "PatchBrief"
+description = "A web client for submitting CVE IDs or pasted advisories, following the five-step assessment pipeline live, and reviewing the final remediation brief."
+version = "1.0.0"
+id = "artifacts/patchbrief-web"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23230
+
+[services.development]
+run = "pnpm --filter @workspace/patchbrief-web run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/patchbrief-web", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/patchbrief-web/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23230"
+BASE_PATH = "/"

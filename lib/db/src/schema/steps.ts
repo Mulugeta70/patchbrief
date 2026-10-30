@@ -30,6 +30,10 @@ export const stepsTable = pgTable(
     outputSummary: text("output_summary"),
     error: text("error"),
     fallbackUsed: boolean("fallback_used").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("steps_run_seq_unique").on(table.runId, table.seq),

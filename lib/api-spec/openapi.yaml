@@ -3,13 +3,15 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: PatchBrief API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: runs
+    description: PatchBrief pipeline runs
 paths:
   /healthz:
     get:
@@ -24,6 +26,117 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /runs:
+    post:
+      operationId: createRun
+      tags: [runs]
+      summary: Create a pipeline run
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunInput"
+      responses:
+        "201":
+          description: New run created and queued for processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWithSteps"
+        "200":
+          description: Existing run returned for the same idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWithSteps"
+        "400":
+          description: Invalid input or missing idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /runs/latest:
+    get:
+      operationId: getLatestRun
+      tags: [runs]
+      summary: Get the latest pipeline run
+      responses:
+        "200":
+          description: Latest run and its steps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWithSteps"
+        "404":
+          description: No runs exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /runs/{id}:
+    get:
+      operationId: getRun
+      tags: [runs]
+      summary: Get a run and its steps
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Run and its steps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWithSteps"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /runs/{id}/events:
+    get:
+      operationId: streamRunEvents
+      tags: [runs]
+      summary: Stream live run events
+      description: >-
+        Server-Sent Events stream. Sends a snapshot event, then step events
+        containing a full Step object, and a run event containing final status
+        and degraded state. Active streams receive keepalive comments every
+        fifteen seconds.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +146,98 @@ components:
           type: string
       required:
         - status
-
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    RunInput:
+      type: object
+      properties:
+        input:
+          type: string
+          minLength: 1
+      required: [input]
+    Run:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        idempotencyKey:
+          type: string
+        input:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        degraded:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+      required: [id, idempotencyKey, input, status, degraded, createdAt, finishedAt]
+    Step:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+        name:
+          type: string
+          enum: [fetch, extract, assess, plan, brief]
+        status:
+          type: string
+          enum: [running, completed, failed]
+        attempt:
+          type: integer
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+        durationMs:
+          type: [integer, "null"]
+        output:
+          type: [object, "null"]
+          additionalProperties: true
+        outputSummary:
+          type: [string, "null"]
+        error:
+          type: [string, "null"]
+        fallbackUsed:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - runId
+        - seq
+        - name
+        - status
+        - attempt
+        - startedAt
+        - durationMs
+        - output
+        - outputSummary
+        - error
+        - fallbackUsed
+        - updatedAt
+    RunWithSteps:
+      type: object
+      properties:
+        run:
+          $ref: "#/components/schemas/Run"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/Step"
+      required: [run, steps]
