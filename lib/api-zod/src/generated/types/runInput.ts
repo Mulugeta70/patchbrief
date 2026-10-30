@@ -5,6 +5,7 @@
  * PatchBrief API
  * OpenAPI spec version: 0.1.0
  */
+import type { FaultInput } from './faultInput';
 
 export interface RunInput {
   /**
@@ -12,4 +13,7 @@ export interface RunInput {
      * @maxLength 20000
      */
   input: string;
+  slowMode?: boolean;
+  /** @maxItems 20 */
+  faults?: FaultInput[];
 }

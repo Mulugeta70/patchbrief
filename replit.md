@@ -1,16 +1,19 @@
 # PatchBrief
 
-PatchBrief runs an ordered placeholder analysis pipeline and stores each run and step in PostgreSQL.
+PatchBrief runs a source-grounded advisory review pipeline and stores runs, steps, attempts, and demo faults in PostgreSQL. The web app provides live traces and public saved-run replay.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (managed `PORT`)
+- `pnpm --filter @workspace/api-server run test` — retry, validation, and client-boundary unit tests
+- `pnpm --filter @workspace/api-server run test:integration` — development DB recovery/budget tests; run with API server stopped to avoid worker races. Creates and cleans up its own runs.
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
 - Required secret for LLM-backed steps: `OPENAI_API_KEY` — OpenAI API key in Replit Tools > Secrets
+- `PATCHBRIEF_MAX_RUNS_PER_DAY` defaults to 100 (UTC day). After this budget, runs are accepted as degraded with no LLM calls; input-size and per-IP limits still reject requests.
 
 ## Stack
 
@@ -19,7 +22,7 @@ PatchBrief runs an ordered placeholder analysis pipeline and stores each run and
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Build: esbuild (ESM bundle)
 
 ## Where things live
 
@@ -29,7 +32,9 @@ PatchBrief runs an ordered placeholder analysis pipeline and stores each run and
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Demo worker crashes are run-local stops, never process exits. A crash deliberately leaves its running step/attempt unsaved; a later lease owner records the interruption.
+- Completed steps are immutable during recovery. Any new external step must remain safe to execute more than once with the same input.
+- `resume_count` counts worker claims, including the first start (1). The resumed badge appears only above 1 and shows the saved count directly.
 
 ## Product
 

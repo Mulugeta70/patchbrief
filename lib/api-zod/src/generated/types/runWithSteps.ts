@@ -6,9 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Run } from './run';
+import type { RunFault } from './runFault';
 import type { Step } from './step';
+import type { StepAttempt } from './stepAttempt';
 
 export interface RunWithSteps {
   run: Run;
   steps: Step[];
+  attempts: StepAttempt[];
+  faults: RunFault[];
 }

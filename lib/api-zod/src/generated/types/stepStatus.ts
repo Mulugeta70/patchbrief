@@ -10,6 +10,7 @@ export type StepStatus = typeof StepStatus[keyof typeof StepStatus];
 
 
 export const StepStatus = {
+  pending: 'pending',
   running: 'running',
   needs_input: 'needs_input',
   completed: 'completed',

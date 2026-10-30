@@ -13,7 +13,50 @@ export interface ApiError {
   error: string;
 }
 
+export type FaultInputStep = typeof FaultInputStep[keyof typeof FaultInputStep];
+
+
+export const FaultInputStep = {
+  fetch: 'fetch',
+  extract: 'extract',
+  assess: 'assess',
+  plan: 'plan',
+  brief: 'brief',
+} as const;
+
+export type FaultInputType = typeof FaultInputType[keyof typeof FaultInputType];
+
+
+export const FaultInputType = {
+  timeout: 'timeout',
+  http_500: 'http_500',
+  malformed_json: 'malformed_json',
+  worker_crash: 'worker_crash',
+} as const;
+
+export const FaultInputTimes = {  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+  always: 'always',
+} as const
+export interface FaultInput {
+  step: FaultInputStep;
+  type: FaultInputType;
+  times: typeof FaultInputTimes[keyof typeof FaultInputTimes];
+}
+
 export interface RunInput {
+  /**
+     * @minLength 1
+     * @maxLength 20000
+     */
+  input: string;
+  slowMode?: boolean;
+  /** @maxItems 20 */
+  faults?: FaultInput[];
+}
+
+export interface AdvisoryInput {
   /**
      * @minLength 1
      * @maxLength 20000
@@ -38,6 +81,14 @@ export interface Run {
   input: string;
   status: RunStatus;
   degraded: boolean;
+  slowMode: boolean;
+  resumeCount: number;
+  /** @nullable */
+  workerId: string | null;
+  /** @nullable */
+  leaseExpiresAt: string | null;
+  /** @nullable */
+  llmDisabledReason: string | null;
   createdAt: string;
   /** @nullable */
   finishedAt: string | null;
@@ -58,6 +109,7 @@ export type StepStatus = typeof StepStatus[keyof typeof StepStatus];
 
 
 export const StepStatus = {
+  pending: 'pending',
   running: 'running',
   needs_input: 'needs_input',
   completed: 'completed',
@@ -87,11 +139,53 @@ export interface Step {
   /** @nullable */
   error: string | null;
   fallbackUsed: boolean;
+  interrupted: boolean;
   updatedAt: string;
+}
+
+export type StepAttemptStatus = typeof StepAttemptStatus[keyof typeof StepAttemptStatus];
+
+
+export const StepAttemptStatus = {
+  running: 'running',
+  completed: 'completed',
+  failed: 'failed',
+  interrupted: 'interrupted',
+} as const;
+
+export interface StepAttempt {
+  runId: string;
+  stepName: string;
+  attempt: number;
+  startedAt: string;
+  /** @nullable */
+  durationMs: number | null;
+  /** @nullable */
+  error: string | null;
+  /** @nullable */
+  retryInMs: number | null;
+  status: StepAttemptStatus;
+  /** @nullable */
+  faultType: string | null;
+}
+
+export interface RunFault {
+  id: string;
+  runId: string;
+  stepName: string;
+  type: string;
+  /** Minus one means always */
+  remaining: number;
+  /** Minus one means always */
+  initialTimes: number;
+  injectedCount: number;
+  createdAt: string;
 }
 
 export interface RunWithSteps {
   run: Run;
   steps: Step[];
+  attempts: StepAttempt[];
+  faults: RunFault[];
 }
 

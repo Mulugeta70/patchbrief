@@ -22,6 +22,8 @@ export const stepAttemptsTable = pgTable(
     durationMs: integer("duration_ms"),
     error: text("error"),
     retryInMs: integer("retry_in_ms"),
+    status: text("status").notNull().default("running"),
+    faultType: text("fault_type"),
   },
   (table) => [
     primaryKey({

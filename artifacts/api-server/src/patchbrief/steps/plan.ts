@@ -1,3 +1,4 @@
+import { isWorkerStop } from "../workerErrors";
 import { z } from "zod/v4";
 import { llmClient, type LlmClient } from "../clients/llmClient";
 import type { ExtractedAdvisory } from "./extract";
@@ -84,6 +85,15 @@ export function createPlanStep(
           checklist: [note],
         }));
       }
+      const fallback = (reason: string) => ({
+        output_summary: "Created a remediation checklist from the affected stack table (fallback).",
+        checklist: createFallbackChecklist(assessment.affected_items, extracted.fixed_in),
+        fallback_used: true,
+        fallback_reason: reason,
+      });
+      if (context.llmDisabledReason) {
+        return context.attempts.runLocal(async () => fallback(context.llmDisabledReason!));
+      }
 
       const prompt = [
         "Write a short remediation checklist only for the affected stack items listed below.",
@@ -145,17 +155,8 @@ export function createPlanStep(
           checklist,
         };
       } catch (error) {
-        const reason = errorMessage(error);
-        return {
-          output_summary:
-            "Created a remediation checklist from the affected stack table (fallback).",
-          checklist: createFallbackChecklist(
-            assessment.affected_items,
-            extracted.fixed_in,
-          ),
-          fallback_used: true,
-          fallback_reason: reason,
-        };
+        if (isWorkerStop(error)) throw error;
+        return fallback(errorMessage(error));
       }
     },
   };

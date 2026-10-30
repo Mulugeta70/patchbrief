@@ -6,13 +6,21 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './advisoryInput';
 export * from './apiError';
+export * from './faultInput';
+export * from './faultInputStep';
+export * from './faultInputTimes';
+export * from './faultInputType';
 export * from './healthStatus';
 export * from './run';
+export * from './runFault';
 export * from './runInput';
 export * from './runStatus';
 export * from './runWithSteps';
 export * from './step';
+export * from './stepAttempt';
+export * from './stepAttemptStatus';
 export * from './stepName';
 export * from './stepOutput';
 export * from './stepStatus';

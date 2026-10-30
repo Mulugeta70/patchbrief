@@ -4,12 +4,15 @@ import {
   runsTable,
   stackItemsTable,
   stepAttemptsTable,
+  runFaultsTable,
   stepsTable,
   type Run,
   type Step,
   type StepOutput,
 } from "@workspace/db";
 import { publishAttempt, publishRunUpdate, publishStep } from "./events";
+import { withRunLock } from "./leases";
+import type { FaultInput } from "./faults";
 
 const placeholderStack = [
   { name: "node", version: "18" },
@@ -37,6 +40,7 @@ export async function getStackItems(): Promise<
 export async function createRun(
   input: string,
   idempotencyKey: string,
+  options: { faults?: FaultInput[]; slowMode?: boolean } = {},
   maximumRunsPerDay = configuredDailyRunLimit(),
 ): Promise<{ run: Run; created: boolean }> {
   const result = await db.transaction(async (tx) => {
@@ -66,17 +70,27 @@ export async function createRun(
       .from(runsTable)
       .where(gte(runsTable.createdAt, utcDayStart));
 
-    if ((dailyCount?.total ?? 0) >= maximumRunsPerDay) {
-      throw new DailyRunLimitError(maximumRunsPerDay);
-    }
+    const llmDisabledReason = (dailyCount?.total ?? 0) >= maximumRunsPerDay
+      ? `Daily LLM run budget of ${maximumRunsPerDay} reached. Rule-based fallbacks used; no LLM calls made.`
+      : null;
 
     const [inserted] = await tx
       .insert(runsTable)
-      .values({ input, idempotencyKey, status: "queued" })
+      .values({ input, idempotencyKey, status: "queued",
+        slowMode: options.slowMode ?? false, llmDisabledReason,
+        degraded: llmDisabledReason !== null, leaseExpiresAt: sql`now() - interval '1 second'` })
       .onConflictDoNothing({ target: runsTable.idempotencyKey })
       .returning();
 
-    if (inserted) return { run: inserted, created: true };
+    if (inserted) {
+      if (options.faults?.length) await tx.insert(runFaultsTable).values(options.faults.map((fault, seq) => ({
+        runId: inserted.id, stepName: fault.step, type: fault.type,
+        seq,
+        remaining: fault.times === "always" ? -1 : fault.times,
+        initialTimes: fault.times === "always" ? -1 : fault.times,
+      })));
+      return { run: inserted, created: true };
+    }
 
     const [conflict] = await tx
       .select()
@@ -90,15 +104,6 @@ export async function createRun(
   });
 
   return result;
-}
-
-export class DailyRunLimitError extends Error {
-  constructor(readonly maximumRunsPerDay: number) {
-    super(
-      `The daily run limit of ${maximumRunsPerDay} has been reached. Try again after UTC midnight.`,
-    );
-    this.name = "DailyRunLimitError";
-  }
 }
 
 function configuredDailyRunLimit(): number {
@@ -115,22 +120,24 @@ export async function setRunStatus(
   runId: string,
   status: string,
   finishedAt?: Date | null,
+  workerId?: string,
 ): Promise<void> {
-  const [updatedRun] = await db
+  const [updatedRun] = await withRunLock(runId, workerId, (tx) => tx
     .update(runsTable)
-    .set({ status, ...(finishedAt !== undefined ? { finishedAt } : {}) })
+    .set({ status, ...(finishedAt !== undefined ? { finishedAt } : {}),
+      ...(status !== "running" ? { workerId: null, leaseExpiresAt: null } : {}) })
     .where(eq(runsTable.id, runId))
-    .returning();
+    .returning());
 
   if (updatedRun) publishRunUpdate(updatedRun);
 }
 
-export async function markRunDegraded(runId: string): Promise<void> {
-  const [updatedRun] = await db
+export async function markRunDegraded(runId: string, workerId?: string): Promise<void> {
+  const [updatedRun] = await withRunLock(runId, workerId, (tx) => tx
     .update(runsTable)
     .set({ degraded: true })
     .where(eq(runsTable.id, runId))
-    .returning();
+    .returning());
 
   if (updatedRun) publishRunUpdate(updatedRun);
 }
@@ -140,26 +147,34 @@ export async function createRunningStep(
   seq: number,
   name: string,
   startedAt: Date,
+  workerId: string,
 ): Promise<Step> {
-  const [existing] = await db
+  const step = await withRunLock(runId, workerId, async (tx) => {
+  const [existing] = await tx
     .select()
     .from(stepsTable)
     .where(and(eq(stepsTable.runId, runId), eq(stepsTable.seq, seq)))
     .limit(1);
 
   if (existing) {
-    if (existing.name !== name || existing.status !== "running") {
+    if (existing.name !== name || existing.status !== "pending") {
       throw new Error(`Cannot resume pipeline step ${name} from ${existing.status}.`);
     }
-    return existing;
+    const [resumed] = await tx.update(stepsTable)
+      .set({ status: "running", startedAt, updatedAt: startedAt })
+      .where(eq(stepsTable.id, existing.id)).returning();
+    if (!resumed) throw new Error("Could not start pending step.");
+    return resumed;
   }
 
-  const [step] = await db
+  const [step] = await tx
     .insert(stepsTable)
     .values({ runId, seq, name, status: "running", attempt: 0, startedAt })
     .returning();
 
   if (!step) throw new Error(`Could not create running step: ${name}`);
+  return step;
+  });
   publishStep(step);
   return step;
 }
@@ -168,9 +183,10 @@ export async function startStepAttempt(
   runId: string,
   stepId: string,
   stepName: string,
+  workerId: string,
 ): Promise<number> {
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
+  const result = await withRunLock(runId, workerId, async (tx) => {
     const [step] = await tx
       .select()
       .from(stepsTable)
@@ -183,12 +199,12 @@ export async function startStepAttempt(
     }
 
     const attempt = step.attempt + 1;
-    await tx.insert(stepAttemptsTable).values({
+    const [record] = await tx.insert(stepAttemptsTable).values({
       runId,
       stepName,
       attempt,
       startedAt: now,
-    });
+    }).returning();
 
     const [updatedStep] = await tx
       .update(stepsTable)
@@ -201,7 +217,7 @@ export async function startStepAttempt(
       .returning();
 
     if (!updatedStep) throw new Error(`Could not update step attempt: ${stepId}`);
-    return { attempt, step: updatedStep };
+    return { attempt, step: updatedStep, record };
   });
 
   publishStep(result.step);
@@ -212,6 +228,7 @@ export async function startStepAttempt(
     attempt: result.attempt,
     phase: "started",
     timestamp: now.toISOString(),
+    record: result.record,
   });
   return result.attempt;
 }
@@ -225,10 +242,11 @@ export async function finishStepAttempt(
     error: string | null;
     retryInMs: number | null;
   },
-): Promise<void> {
-  const [updatedAttempt] = await db
+  workerId: string,
+) {
+  const [updatedAttempt] = await withRunLock(runId, workerId, (tx) => tx
     .update(stepAttemptsTable)
-    .set(values)
+    .set({ ...values, status: values.error === null ? "completed" : "failed" })
     .where(
       and(
         eq(stepAttemptsTable.runId, runId),
@@ -236,11 +254,12 @@ export async function finishStepAttempt(
         eq(stepAttemptsTable.attempt, attempt),
       ),
     )
-    .returning();
+    .returning());
 
   if (!updatedAttempt) {
     throw new Error(`Could not finish ${stepName} attempt ${attempt}.`);
   }
+  return updatedAttempt;
 }
 
 export async function finishStep(
@@ -253,8 +272,10 @@ export async function finishStep(
     error?: string;
     fallbackUsed?: boolean;
   },
+  runId: string,
+  workerId: string,
 ): Promise<void> {
-  const [updatedStep] = await db
+  const [updatedStep] = await withRunLock(runId, workerId, (tx) => tx
     .update(stepsTable)
     .set({
       status: values.status,
@@ -266,7 +287,7 @@ export async function finishStep(
       updatedAt: new Date(),
     })
     .where(eq(stepsTable.id, stepId))
-    .returning();
+    .returning());
 
   if (!updatedStep) throw new Error(`Could not finish step: ${stepId}`);
   publishStep(updatedStep);
@@ -294,7 +315,8 @@ export async function resumeRunWithInput(
 
     const [run] = await tx
       .update(runsTable)
-      .set({ input, status: "running", finishedAt: null })
+      .set({ input, status: "queued", finishedAt: null, workerId: null,
+        leaseExpiresAt: sql`now() - interval '1 second'` })
       .where(and(eq(runsTable.id, runId), eq(runsTable.status, "needs_input")))
       .returning();
     if (!run) return { kind: "not_waiting" as const };
@@ -302,7 +324,7 @@ export async function resumeRunWithInput(
     const [fetchStep] = await tx
       .update(stepsTable)
       .set({
-        status: "running",
+        status: "pending",
         startedAt: null,
         durationMs: null,
         output: null,
@@ -334,7 +356,7 @@ export async function resumeRunWithInput(
 
 export async function getRunWithSteps(
   runId: string,
-): Promise<{ run: Run; steps: Step[] } | null> {
+) {
   const [run] = await db
     .select()
     .from(runsTable)
@@ -349,13 +371,22 @@ export async function getRunWithSteps(
     .where(eq(stepsTable.runId, runId))
     .orderBy(asc(stepsTable.seq));
 
-  return { run, steps };
+  const [attempts, faults] = await Promise.all([
+    db.select().from(stepAttemptsTable).where(eq(stepAttemptsTable.runId, runId))
+      .orderBy(asc(stepAttemptsTable.startedAt), asc(stepAttemptsTable.attempt)),
+    db.select().from(runFaultsTable).where(eq(runFaultsTable.runId, runId))
+      .orderBy(asc(runFaultsTable.seq), asc(runFaultsTable.createdAt), asc(runFaultsTable.id)),
+  ]);
+  // Attempts saved before the status column existed already have final durations.
+  const normalizedAttempts = attempts.map((attempt) => ({
+    ...attempt,
+    status: attempt.status === "running" && attempt.durationMs !== null
+      ? (attempt.error === null ? "completed" : "failed") : attempt.status,
+  }));
+  return { run, steps, attempts: normalizedAttempts, faults };
 }
 
-export async function getLatestRunWithSteps(): Promise<{
-  run: Run;
-  steps: Step[];
-} | null> {
+export async function getLatestRunWithSteps() {
   const [run] = await db
     .select()
     .from(runsTable)

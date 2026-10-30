@@ -5,21 +5,32 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
-import { getGetLatestRunQueryKey, getGetRunQueryKey, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput } from '@workspace/api-client-react';
+import {
+  getGetLatestRunQueryKey, getGetRunQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
+  type FaultInput, type RunFault, type RunWithSteps, type Step, type StepAttempt,
+} from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
-type StepStatus = 'completed' | 'running' | 'needs_input' | 'failed' | 'waiting' | 'fallback_used';
-type Step = {
-  id: string; runId: string; seq: number; name: string; status: StepStatus; attempt: number;
-  startedAt: string | null; durationMs: number | null; output: Record<string, unknown> | null;
-  outputSummary: string | null; error: string | null; fallbackUsed: boolean; updatedAt: string;
-};
-type Run = { id: string; idempotencyKey: string; input: string; status: string; degraded: boolean; createdAt: string; finishedAt: string | null };
-type RunData = { run: Run; steps: Step[] };
-type AttemptEvent = { runId: string; stepId: string; stepName: string; attempt: number; phase: 'started' | 'failed' | 'retry_scheduled'; timestamp: string; retryInMs?: number; durationMs?: number; error?: string };
-const ORDERED_STEPS = ['fetch', 'extract', 'assess', 'plan', 'brief'];
+type DisplayStatus = 'completed' | 'running' | 'needs_input' | 'failed' | 'waiting' | 'fallback_used';
+type RunData = RunWithSteps;
+type AttemptEvent = { runId: string; stepId: string; stepName: string; attempt: number; phase: 'started' | 'failed' | 'retry_scheduled' | 'completed' | 'interrupted'; timestamp: string; retryInMs?: number; durationMs?: number; error?: string; record?: StepAttempt };
+const ORDERED_STEPS = ['fetch', 'extract', 'assess', 'plan', 'brief'] as const;
+type StepKey = typeof ORDERED_STEPS[number];
 const STEP_LABELS: Record<string, string> = { fetch: 'Fetch advisory', extract: 'Extract facts', assess: 'Assess stack', plan: 'Map remediation', brief: 'Write brief' };
+const FAULT_LABELS: Record<string, string> = { timeout: 'Timeout', http_500: 'HTTP 500', malformed_json: 'Malformed JSON', worker_crash: 'Worker crash' };
+const NETWORK_FAULT_STEPS: StepKey[] = ['fetch', 'extract', 'plan'];
+const isTerminal = (status?: string) => status === 'completed' || status === 'failed';
+
+function faultTypesFor(step: StepKey): FaultInput['type'][] {
+  return NETWORK_FAULT_STEPS.includes(step) ? ['timeout', 'http_500', 'malformed_json', 'worker_crash'] : ['worker_crash'];
+}
+function timesText(value: number) { return value === -1 ? 'always' : `${value}x`; }
+function formatTime(value: string | null | undefined) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + `.${String(date.getMilliseconds()).padStart(3, '0')}`;
+}
 
 function Header() {
   const [location] = useLocation();
@@ -36,9 +47,72 @@ function AppFrame({ children }: { children: ReactNode }) {
   return <div className="app-shell"><Header />{children}</div>;
 }
 
+function BreakItPanel({ faults, setFaults, slowMode, setSlowMode, input }: {
+  faults: FaultInput[]; setFaults: (next: FaultInput[]) => void; slowMode: boolean; setSlowMode: (v: boolean) => void; input: string;
+}) {
+  const [step, setStep] = useState<StepKey>('fetch');
+  const [type, setType] = useState<FaultInput['type']>('timeout');
+  const [times, setTimes] = useState<FaultInput['times']>(1);
+  const allowed = faultTypesFor(step);
+  const changeStep = (next: StepKey) => {
+    setStep(next);
+    if (!faultTypesFor(next).includes(type)) setType('worker_crash');
+  };
+  const add = () => {
+    if (faults.length >= 20) return;
+    setFaults([...faults, { step, type, times }]);
+  };
+  const looksLikeCve = /^\s*CVE-\d{4}-\d{4,}\s*$/i.test(input);
+  const fetchNetwork = faults.some((f) => f.step === 'fetch' && f.type !== 'worker_crash');
+  return <section className="break-panel" aria-labelledby="break-it-title" data-testid="panel-break-it">
+    <div className="break-head">
+      <div><h3 id="break-it-title">Break it</h3><p>Optional demo faults, scoped to this run only. Watch retries, fallbacks and worker recovery happen live.</p></div>
+      <span className="eyebrow">02 / Faults</span>
+    </div>
+    <div className="fault-builder">
+      <label><span>Step</span>
+        <select className="input-control" value={step} onChange={(e) => changeStep(e.target.value as StepKey)} data-testid="select-fault-step">
+          {ORDERED_STEPS.map((s) => <option key={s} value={s}>{STEP_LABELS[s]}</option>)}
+        </select>
+      </label>
+      <label><span>Failure</span>
+        <select className="input-control" value={type} onChange={(e) => setType(e.target.value as FaultInput['type'])} data-testid="select-fault-type">
+          {allowed.map((t) => <option key={t} value={t}>{FAULT_LABELS[t]}</option>)}
+        </select>
+      </label>
+      <label><span>Times</span>
+        <div className="times-group" role="radiogroup" aria-label="How many times">
+          {([1, 2, 3, 'always'] as FaultInput['times'][]).map((t) => <button key={String(t)} type="button" role="radio" aria-checked={times === t} className={`times-chip ${times === t ? 'on' : ''}`} onClick={() => setTimes(t)} data-testid={`button-fault-times-${t}`}>{t === 'always' ? 'always' : `${t}x`}</button>)}
+        </div>
+      </label>
+      <button type="button" className="add-fault" onClick={add} disabled={faults.length >= 20} data-testid="button-add-fault">Add fault</button>
+    </div>
+    <p className="field-hint">Timeout, HTTP 500 and malformed JSON apply to fetch, extract and plan. Worker crash applies to every step.</p>
+    {faults.length === 0
+      ? <div className="fault-empty" data-testid="text-no-faults">No faults queued. The run will behave normally.</div>
+      : <ul className="fault-list" data-testid="list-faults">
+        {faults.map((f, index) => <li key={`${f.step}-${f.type}-${index}`} className={`fault-item ${f.type === 'worker_crash' ? 'crash' : ''}`} data-testid={`row-fault-${index}`}>
+          <span className="fault-step">{f.step}</span><span>{FAULT_LABELS[f.type]}</span><span className="fault-times">{f.times === 'always' ? 'always' : `${f.times}x`}</span>
+          <button type="button" className="remove-fault" aria-label={`Remove ${FAULT_LABELS[f.type]} on ${f.step}`} onClick={() => setFaults(faults.filter((_, i) => i !== index))} data-testid={`button-remove-fault-${index}`}>Remove</button>
+        </li>)}
+      </ul>}
+    <div className={`fault-note ${fetchNetwork && !looksLikeCve ? 'warn' : ''}`} data-testid="text-fetch-fault-note">
+      Fetch network faults only fire when the input is a CVE identifier, because fetch then calls NVD over HTTP. Pasted advisory text bypasses HTTP, so a fetch timeout, HTTP 500 or malformed JSON fault will never trigger.
+      {fetchNetwork && !looksLikeCve && <strong> Your current input is not a bare CVE ID.</strong>}
+    </div>
+    <label className="slow-toggle" data-testid="toggle-slow-mode">
+      <input type="checkbox" checked={slowMode} onChange={(e) => setSlowMode(e.target.checked)} data-testid="input-slow-mode" />
+      <span className="slow-track" aria-hidden="true" />
+      <span><strong>Slow mode</strong> artificial 1.5s delay between steps for demos</span>
+    </label>
+  </section>;
+}
+
 function Home() {
   const [input, setInput] = useState('');
   const [inputError, setInputError] = useState('');
+  const [faults, setFaults] = useState<FaultInput[]>([]);
+  const [slowMode, setSlowMode] = useState(false);
   const idempotencyHeaders = useRef(new Headers());
   const createRun = useCreateRun({ request: { headers: idempotencyHeaders.current } });
   const [, setLocation] = useLocation();
@@ -52,13 +126,13 @@ function Home() {
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     idempotencyHeaders.current.set('Idempotency-Key', idempotencyKey);
     createRun.mutate(
-      { data: { input: value } },
+      { data: { input: value, ...(faults.length ? { faults } : {}), ...(slowMode ? { slowMode: true } : {}) } },
       {
-        onSuccess: (result) => {
-          const typed = result as unknown as RunData;
-          setLocation(`/run/${encodeURIComponent(typed.run.id)}`);
+        onSuccess: (result) => setLocation(`/run/${encodeURIComponent(result.run.id)}`),
+        onError: (failure) => {
+          const apiMessage = (failure as { data?: { error?: string } }).data?.error;
+          setInputError(apiMessage || 'The review could not be started. Check the input and try again.');
         },
-        onError: () => setInputError('The review could not be started. Check the input and try again.'),
       },
     );
   };
@@ -73,6 +147,7 @@ function Home() {
           <div className="proof-row">
             <div><strong>Source-led</strong>Evidence is kept close to each finding.</div>
             <div><strong>Traceable</strong>Every assessment step is visible.</div>
+            <div><strong>Recoverable</strong>Every attempt, crash and retry is recorded.</div>
           </div>
         </section>
         <form className="form-panel fade-in" onSubmit={submit} data-testid="form-create-run">
@@ -81,11 +156,13 @@ function Home() {
             <span className="eyebrow">01 / Input</span>
           </div>
           <label className="input-label" htmlFor="advisory-input">CVE ID or advisory</label>
-          <textarea id="advisory-input" className="input-control advisory-input" value={input} maxLength={20000} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\n—or paste the vendor advisory here…'} data-testid="input-advisory" />
+          <textarea id="advisory-input" className="input-control advisory-input" value={input} maxLength={20000} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\nor paste the vendor advisory here'} data-testid="input-advisory" />
           <p className="field-hint">The supplied text is the source material. {input.length.toLocaleString()} / 20,000 characters.</p>
+          <BreakItPanel faults={faults} setFaults={setFaults} slowMode={slowMode} setSlowMode={setSlowMode} input={input} />
           {inputError && <div className="error-box" role="alert" data-testid="status-submit-error">{inputError}</div>}
           <button className="submit-button" type="submit" disabled={createRun.isPending} data-testid="button-submit-run">
-             <span>{createRun.isPending ? 'Starting review…' : 'Run assessment'}</span>
+            <span>{createRun.isPending ? 'Starting review…' : 'Run assessment'}</span>
+            <span className="submit-meta">{faults.length ? `${faults.length} fault${faults.length > 1 ? 's' : ''}` : ''}{slowMode ? `${faults.length ? ' / ' : ''}slow` : ''}</span>
           </button>
           {createRun.isPending && <p className="field-hint" aria-live="polite">Creating a fresh run. This may take a moment.</p>}
         </form>
@@ -95,12 +172,12 @@ function Home() {
   </AppFrame>;
 }
 
-function normalizedStatus(step?: Step): StepStatus {
-  if (!step) return 'waiting';
-  if (step.fallbackUsed || step.status === 'fallback_used') return 'fallback_used';
+function normalizedStatus(step?: Step): DisplayStatus {
+  if (!step || step.status === 'pending') return 'waiting';
+  if (step.fallbackUsed) return 'fallback_used';
   return step.status;
 }
-function statusText(status: StepStatus) {
+function statusText(status: DisplayStatus) {
   return status === 'completed' ? 'done' : status === 'fallback_used' ? 'fallback used' : status === 'needs_input' ? 'needs input' : status;
 }
 function formatDuration(ms: number | null | undefined) {
@@ -110,22 +187,33 @@ function formatDuration(ms: number | null | undefined) {
 function formatSummary(step?: Step) {
   return step?.outputSummary || step?.error || (step?.status === 'running' ? 'Working through this step.' : 'Waiting for the previous step.');
 }
+const attemptKey = (a: StepAttempt) => `${a.stepName}#${a.attempt}`;
+function unionAttempts(base: StepAttempt[] = [], preferred: StepAttempt[] = []) {
+  const map = new Map(base.map((a) => [attemptKey(a), a]));
+  preferred.forEach((a) => map.set(attemptKey(a), a));
+  return [...map.values()].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt) || a.attempt - b.attempt);
+}
+function unionFaults(base: RunFault[] = [], preferred: RunFault[] = []) {
+  const map = new Map(base.map((f) => [f.id, f]));
+  preferred.forEach((f) => map.set(f.id, f));
+  return [...map.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
 function mergeRunData(current: RunData | null, incoming: RunData): RunData {
   if (!current || current.run.id !== incoming.run.id) return incoming;
   const newer = new Map(current.steps.map((step) => [step.seq, step]));
   incoming.steps.forEach((next) => {
     const prior = newer.get(next.seq);
-    if (!prior || Date.parse(next.updatedAt || '') >= Date.parse(prior.updatedAt || '') || prior.status === 'waiting') newer.set(next.seq, next);
+    if (!prior || Date.parse(next.updatedAt || '') >= Date.parse(prior.updatedAt || '')) newer.set(next.seq, next);
   });
-  const terminalCurrent = ['completed', 'failed'].includes(current.run.status);
   return {
-    run: terminalCurrent && !['completed', 'failed'].includes(incoming.run.status) ? current.run : { ...current.run, ...incoming.run },
+    run: isTerminal(current.run.status) && !isTerminal(incoming.run.status) ? current.run : { ...current.run, ...incoming.run },
     steps: [...newer.values()].sort((a, b) => a.seq - b.seq),
+    attempts: unionAttempts(current.attempts, incoming.attempts),
+    faults: unionFaults(current.faults, incoming.faults),
   };
 }
 function replaceFromSnapshot(current: RunData | null, snapshot: RunData): RunData {
   if (!current || current.run.id !== snapshot.run.id) return snapshot;
-  const currentIsTerminal = ['completed', 'failed'].includes(current.run.status);
   const steps = snapshot.steps.map((next) => {
     const previous = current.steps.find((step) => step.seq === next.seq);
     if (!previous) return next;
@@ -134,22 +222,47 @@ function replaceFromSnapshot(current: RunData | null, snapshot: RunData): RunDat
     return Number.isFinite(previousTime) && (!Number.isFinite(nextTime) || previousTime > nextTime) ? previous : next;
   });
   return {
-    run: currentIsTerminal && !['completed', 'failed'].includes(snapshot.run.status) ? current.run : snapshot.run,
+    run: isTerminal(current.run.status) && !isTerminal(snapshot.run.status) ? current.run : snapshot.run,
     steps: steps.sort((a, b) => a.seq - b.seq),
+    attempts: unionAttempts(current.attempts, snapshot.attempts),
+    faults: unionFaults(current.faults, snapshot.faults),
   };
 }
 
-function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRemainingMs }: { data: RunData; onSelect: (step: Step) => void; selectedSeq: number | null; connection: string; retrying: AttemptEvent | null; retryRemainingMs: number }) {
-  const steps = ORDERED_STEPS.map((name, index) => data.steps.find((step) => step.name === name) || ({
-    id: `waiting-${name}`, runId: data.run.id, seq: index + 1, name, status: 'waiting' as StepStatus,
+function AttemptHistory({ attempts }: { attempts: StepAttempt[] }) {
+  if (!attempts.length) return <div className="attempt-empty" data-testid="text-no-attempts">No attempts have been recorded for this step yet.</div>;
+  return <ol className="attempt-list" data-testid="list-attempts">
+    {attempts.map((a) => <li key={attemptKey(a)} className={`attempt-row ${a.status}`} data-testid={`row-attempt-${a.stepName}-${a.attempt}`}>
+      <div className="attempt-top">
+        <span className="attempt-no">#{a.attempt}</span>
+        <span className={`attempt-status ${a.status}`}>{a.status}</span>
+        <span className="attempt-time">started {formatTime(a.startedAt)}</span>
+        <span className="attempt-time">{formatDuration(a.durationMs)}</span>
+        {a.faultType && <span className="attempt-fault">injected {FAULT_LABELS[a.faultType] || a.faultType}</span>}
+      </div>
+      {a.error && <div className="attempt-error">{a.error}</div>}
+      {a.retryInMs != null && <div className="attempt-retry">retry scheduled in {formatDuration(a.retryInMs)}</div>}
+    </li>)}
+  </ol>;
+}
+
+function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRemainingMs, localInterrupted }: { data: RunData; onSelect: (step: Step) => void; selectedSeq: number | null; connection: string; retrying: AttemptEvent | null; retryRemainingMs: number; localInterrupted: string[] }) {
+  const steps: Step[] = ORDERED_STEPS.map((name, index) => data.steps.find((step) => step.name === name) || ({
+    id: `waiting-${name}`, runId: data.run.id, seq: index + 1, name, status: 'pending',
     attempt: 0, startedAt: null, durationMs: null, output: null, outputSummary: null, error: null,
-    fallbackUsed: false, updatedAt: '',
+    fallbackUsed: false, interrupted: false, updatedAt: '',
   }));
+  const attemptsFor = (name: string) => (data.attempts || []).filter((a) => a.stepName === name).sort((a, b) => a.attempt - b.attempt || Date.parse(a.startedAt) - Date.parse(b.startedAt));
+  const interruptState = (step: Step): 'none' | 'interrupted' | 'recovered' => {
+    const hit = step.interrupted || localInterrupted.includes(step.name) || attemptsFor(step.name).some((a) => a.status === 'interrupted' || (a.status === 'running' && a.faultType === 'worker_crash'));
+    if (!hit) return 'none';
+    return step.status === 'completed' ? 'recovered' : step.status === 'pending' && step.interrupted ? 'recovered' : step.status === 'running' && step.interrupted ? 'recovered' : 'interrupted';
+  };
   const centers = [100, 300, 500, 700, 900];
-  const statusClass = (status: StepStatus) => status === 'completed' ? 'done' : status === 'fallback_used' ? 'fallback' : status === 'needs_input' ? 'needs-input' : status;
+  const statusClass = (status: DisplayStatus) => status === 'completed' ? 'done' : status === 'fallback_used' ? 'fallback' : status === 'needs_input' ? 'needs-input' : status;
   const shortSummary = (summary: string) => summary.length > 24 ? `${summary.slice(0, 23).trimEnd()}…` : summary;
   return <div className="trace-card">
-    <div className="section-label"><span>Run trace</span><span className={`stream-state ${connection}`} role="status" data-testid="status-sse-connection">{connection === 'complete' ? 'Complete' : connection === 'reconnecting' ? 'Reconnecting' : connection === 'connected' ? 'Connected' : 'Connecting'}</span></div>
+    <div className="section-label"><span>Run trace</span><span className={`stream-state ${connection}`} role="status" data-testid="status-sse-connection">{connection === 'replay' ? 'Saved replay' : connection === 'complete' ? 'Complete' : connection === 'reconnecting' ? 'Reconnecting' : connection === 'connected' ? 'Live' : connection === 'idle' ? 'Loading' : 'Connecting'}</span></div>
     <div className="trace-svg-scroll">
       <svg className="trace-svg" viewBox="0 0 1000 218" role="group" aria-label="Five ordered review steps connected in a horizontal run trace">
         <defs><marker id="trace-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7" fill="none" stroke="#a5aaa5" strokeWidth="1.2" /></marker></defs>
@@ -162,7 +275,9 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
           const status = normalizedStatus(step);
           const summary = formatSummary(step);
           const label = STEP_LABELS[step.name] || step.name;
-          const accessibleText = `${label}, ${statusText(status)}, attempt ${step.attempt || 'not started'}, ${formatDuration(step.durationMs)}. Summary: ${summary}${step.error ? `. Error: ${step.error}` : ''}`;
+          const interrupt = interruptState(step);
+          const count = attemptsFor(step.name).length;
+          const accessibleText = `${label}, ${statusText(status)}${interrupt !== 'none' ? `, ${interrupt}` : ''}, attempt ${step.attempt || 'not started'}, ${formatDuration(step.durationMs)}. Summary: ${summary}${step.error ? `. Error: ${step.error}` : ''}`;
           return <g
             key={step.name}
             className={`svg-step ${selectedSeq === step.seq ? 'selected' : ''}`}
@@ -173,10 +288,7 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
             data-testid={`step-${step.name}`}
             onClick={() => onSelect(step)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onSelect(step);
-              }
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(step); }
             }}
           >
             <title>{accessibleText}</title>
@@ -184,12 +296,14 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
               <path d={`M ${centers[index] - 13} 20 C ${centers[index] - 31} -1 ${centers[index] + 31} -1 ${centers[index] + 13} 20`} markerEnd="url(#trace-arrow)" />
               <text x={centers[index]} y="8">retrying in {Math.ceil(retryRemainingMs / 1000)}s</text>
             </g>}
+            {interrupt !== 'none' && <circle className={`interrupt-ring ${interrupt}`} cx={centers[index]} cy="39" r="25" />}
             <circle className={`svg-node ${statusClass(status)}`} cx={centers[index]} cy="39" r="19" />
             <text className="svg-seq" x={centers[index]} y="43">{String(step.seq).padStart(2, '0')}</text>
             <text className="svg-name" x={centers[index]} y="82">{label}</text>
             <text className={`svg-status ${statusClass(status)}`} x={centers[index]} y="103">{statusText(status)}</text>
-            <text className="svg-meta" x={centers[index]} y="125">{step.attempt > 1 ? `attempt ${step.attempt} · ` : ''}{formatDuration(step.durationMs)}</text>
+            <text className="svg-meta" x={centers[index]} y="125">{step.attempt > 1 ? `attempt ${step.attempt} · ` : ''}{formatDuration(step.durationMs)}{count ? ` · ${count} log` : ''}</text>
             <text className="svg-summary" x={centers[index]} y="151">{shortSummary(summary)}</text>
+            {interrupt !== 'none' && <text className={`interrupt-text ${interrupt}`} x={centers[index] - 26} y="176" data-testid={`status-interrupt-${step.name}`}>{interrupt === 'recovered' ? 'crashed / recovered' : 'interrupted'}</text>}
             {step.fallbackUsed && <g className="fallback-branch" aria-label={`${label} used a fallback`}>
               <path d={`M ${centers[index] + 13} 55 C ${centers[index] + 35} 81 ${centers[index] + 35} 145 ${centers[index] + 12} 171`} />
               <circle cx={centers[index] + 12} cy="178" r="7" />
@@ -202,11 +316,14 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
     {selectedSeq != null && (() => {
       const step = steps.find((entry) => entry.seq === selectedSeq);
       if (!step) return null;
+      const interrupt = interruptState(step);
       return <div className="step-detail fade-in" data-testid="detail-selected-step">
-        <div className="detail-head"><span>{STEP_LABELS[step.name] || step.name}</span><span className="node-status">{statusText(normalizedStatus(step))} · attempt {step.attempt || '—'} · {formatDuration(step.durationMs)}</span></div>
+        <div className="detail-head"><span>{STEP_LABELS[step.name] || step.name}{interrupt !== 'none' && <span className={`interrupt-pill ${interrupt}`}>{interrupt === 'recovered' ? 'interrupted, recovered' : 'interrupted'}</span>}</span><span className="node-status">{statusText(normalizedStatus(step))} · attempt {step.attempt || '—'} · {formatDuration(step.durationMs)}</span></div>
         <p className="detail-body">{step.outputSummary || 'No step summary is available yet.'}</p>
         {step.output && <pre className="detail-body">{JSON.stringify(step.output, null, 2)}</pre>}
         {step.error && <div className="detail-error"><strong>Error</strong><br />{step.error}</div>}
+        <div className="detail-sub">Attempt history</div>
+        <AttemptHistory attempts={attemptsFor(step.name)} />
       </div>;
     })()}
   </div>;
@@ -231,11 +348,31 @@ function MarkdownBrief({ content }: { content: string }) {
   </div>;
 }
 
-function RunView({ initial, data, isLoading, error, onRetry, showId = true, connection, retrying, retryRemainingMs }: {
-  initial: RunData | null; data: RunData | null; isLoading: boolean; error: boolean; onRetry: () => void; showId?: boolean; connection: string; retrying: AttemptEvent | null; retryRemainingMs: number;
+function FaultsPanel({ faults }: { faults: RunFault[] }) {
+  if (!faults.length) return null;
+  return <section className="faults-card" data-testid="panel-run-faults">
+    <div className="section-label"><span>Injected faults</span><span>{faults.reduce((n, f) => n + f.injectedCount, 0)} fired</span></div>
+    <table className="faults-table">
+      <thead><tr><th>Step</th><th>Failure</th><th>Configured</th><th>Injected</th><th>Remaining</th></tr></thead>
+      <tbody>
+        {faults.map((f) => <tr key={f.id} data-testid={`row-run-fault-${f.id}`}>
+          <td className="mono">{f.stepName}</td>
+          <td><span className={`fault-type ${f.type === 'worker_crash' ? 'crash' : ''}`}>{FAULT_LABELS[f.type] || f.type}</span></td>
+          <td className="mono">{timesText(f.initialTimes)}</td>
+          <td className="mono" data-testid={`text-fault-injected-${f.id}`}>{f.injectedCount}</td>
+          <td className="mono" data-testid={`text-fault-remaining-${f.id}`}>{f.remaining === -1 ? 'always' : f.remaining === 0 ? 'spent' : f.remaining}</td>
+        </tr>)}
+      </tbody>
+    </table>
+  </section>;
+}
+
+function RunView({ initial, data, isLoading, error, onRetry, showId = true, connection, retrying, retryRemainingMs, localInterrupted }: {
+  initial: RunData | null; data: RunData | null; isLoading: boolean; error: boolean; onRetry: () => void; showId?: boolean; connection: string; retrying: AttemptEvent | null; retryRemainingMs: number; localInterrupted: string[];
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [copyStatus, setCopyStatus] = useState('Copy message');
+  const [linkStatus, setLinkStatus] = useState('Copy link');
   const [resumeText, setResumeText] = useState('');
   const [resumeError, setResumeError] = useState('');
   const resumeInput = useSubmitRunInput();
@@ -257,13 +394,9 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
     resumeInput.mutate(
       { id: live.run.id, data: { input: value } },
       {
-        onSuccess: (result) => {
-          const updated = result as unknown as RunData;
+        onSuccess: (updated) => {
           queryClient.setQueryData(getGetRunQueryKey(live.run.id), updated);
-          queryClient.setQueryData(getGetLatestRunQueryKey(), (old: unknown) => {
-            const current = old as RunData | undefined;
-            return current?.run.id === live.run.id ? updated : old;
-          });
+          queryClient.setQueryData(getGetLatestRunQueryKey(), (old: RunData | undefined) => old?.run.id === live.run.id ? updated : old);
           setResumeText('');
         },
         onError: (failure) => {
@@ -282,24 +415,47 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
       setCopyStatus('Copy unavailable');
     }
   };
+  const copyLink = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('unavailable');
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkStatus('Link copied');
+    } catch {
+      setLinkStatus('Copy failed, use the address bar');
+    }
+    window.setTimeout(() => setLinkStatus('Copy link'), 2400);
+  };
   return <div className="run-content">
     <div className="page-heading">
       <div>
         <div className="eyebrow">Vulnerability assessment</div>
         <h1>{live.run.input.length > 70 ? `${live.run.input.slice(0, 70)}…` : live.run.input}</h1>
-        <p>Live review trace and evidence summary</p>
-        <div className="status-line"><span className={`live-dot ${statusClass}`} /><span>{live.run.status === 'completed' ? 'Review complete' : live.run.status === 'failed' ? 'Review failed' : live.run.status === 'needs_input' ? 'Needs advisory input' : 'Review in progress'}</span>{live.run.degraded && <span className="degraded-badge">Degraded</span>}</div>
+        <p>{connection === 'replay' ? 'Saved replay of a finished run' : 'Live review trace and evidence summary'}</p>
+        <div className="status-line">
+          <span className={`live-dot ${statusClass}`} />
+          <span data-testid="status-run">{live.run.status === 'completed' ? 'Review complete' : live.run.status === 'failed' ? 'Review failed' : live.run.status === 'needs_input' ? 'Needs advisory input' : live.run.status === 'queued' ? 'Queued for a worker' : 'Review in progress'}</span>
+          {live.run.degraded && <span className="degraded-badge">Degraded</span>}
+          {live.run.resumeCount > 1 && <span className="resumed-badge" data-testid="badge-resumed">Resumed · count {live.run.resumeCount}</span>}
+          {live.run.slowMode && <span className="slow-badge" data-testid="badge-slow-mode">Slow mode / artificial 1.5s delay between steps</span>}
+        </div>
       </div>
-      {showId && <div className="run-id" data-testid="text-run-id">{live.run.id}</div>}
+      <div className="heading-side">
+        {showId && <div className="run-id" data-testid="text-run-id">{live.run.id}</div>}
+        {showId && <button type="button" className="copy-button" onClick={copyLink} data-testid="button-copy-link">{linkStatus}</button>}
+      </div>
     </div>
+    {live.run.llmDisabledReason && <div className="llm-note" data-testid="text-llm-disabled">
+      <strong>Deterministic mode</strong> The model was not used for this run: {live.run.llmDisabledReason}. This is an accepted degraded run, not an error; rule-based fallbacks produced the output.
+    </div>}
     {live.run.status === 'needs_input' && <form className="resume-panel fade-in" onSubmit={submitResume} data-testid="form-resume-run">
       <div className="panel-head"><div><h2 className="panel-title">Paste the advisory to continue</h2><p className="panel-subtitle">NVD could not provide this CVE record. This resumes the same run at the fetch step.</p></div><span className="eyebrow">Input needed</span></div>
       <label className="input-label" htmlFor="resume-advisory-input">Advisory text</label>
-      <textarea id="resume-advisory-input" className="input-control advisory-input" value={resumeText} onChange={(event) => { setResumeText(event.target.value); if (resumeError) setResumeError(''); }} maxLength={20000} placeholder="Paste the vendor advisory here…" data-testid="input-resume-advisory" />
+      <textarea id="resume-advisory-input" className="input-control advisory-input" value={resumeText} onChange={(event) => { setResumeText(event.target.value); if (resumeError) setResumeError(''); }} maxLength={20000} placeholder="Paste the vendor advisory here" data-testid="input-resume-advisory" />
       <div className="resume-footer"><span className="field-hint">{resumeText.length.toLocaleString()} / 20,000 characters</span><button className="submit-button" type="submit" disabled={resumeInput.isPending || !resumeText.trim()} data-testid="button-resume-run">{resumeInput.isPending ? 'Resuming…' : 'Resume this run'}</button></div>
       {resumeError && <div className="error-box" role="alert" data-testid="status-resume-error">{resumeError}</div>}
     </form>}
-    <TraceGraph data={live} selectedSeq={selected} onSelect={(step) => setSelected((prev) => prev === step.seq ? null : step.seq)} connection={connection} retrying={retrying} retryRemainingMs={retryRemainingMs} />
+    <TraceGraph data={live} selectedSeq={selected} onSelect={(step) => setSelected((prev) => prev === step.seq ? null : step.seq)} connection={connection} retrying={retrying} retryRemainingMs={retryRemainingMs} localInterrupted={localInterrupted} />
+    <FaultsPanel faults={live.faults || []} />
     {(live.run.status === 'completed' || markdown) && <section className="brief-card">
       <div className="brief-head"><h2>Assessment brief</h2>{live.run.degraded && <span className="degraded-badge">Degraded output</span>}</div>
       <MarkdownBrief content={markdown} />
@@ -311,18 +467,24 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
   </div>;
 }
 
+type Connection = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'complete' | 'replay';
 function useRunStream(id: string, initial: RunData | undefined) {
   const [streamData, setStreamData] = useState<RunData | null>(initial || null);
   const [attemptEvent, setAttemptEvent] = useState<AttemptEvent | null>(null);
+  const [localInterrupted, setLocalInterrupted] = useState<string[]>([]);
   const [clock, setClock] = useState(Date.now());
-  const [connection, setConnection] = useState<'connecting' | 'connected' | 'reconnecting' | 'complete'>(() => initial && ['completed', 'failed'].includes(initial.run.status) ? 'complete' : 'connecting');
+  const [connection, setConnection] = useState<Connection>(() => initial ? (isTerminal(initial.run.status) ? 'replay' : 'connecting') : 'idle');
   const latest = useRef<RunData | null>(initial || null);
   const queryClient = useQueryClient();
+  const loaded = !!initial && initial.run.id === id;
+  const initialTerminal = loaded && isTerminal(initial.run.status);
+  const shouldStream = !!id && loaded && !initialTerminal;
+  const streamedRef = useRef(false);
   useEffect(() => {
     if (initial) {
       latest.current = mergeRunData(latest.current, initial);
       setStreamData(latest.current);
-      if (['completed', 'failed'].includes(latest.current.run.status)) setConnection('complete');
+      if (isTerminal(latest.current.run.status)) setConnection(streamedRef.current ? 'complete' : 'replay');
     }
   }, [initial]);
   useEffect(() => {
@@ -331,18 +493,52 @@ function useRunStream(id: string, initial: RunData | undefined) {
     return () => window.clearInterval(timer);
   }, [attemptEvent]);
   useEffect(() => {
-    if (!id) return;
-    if (latest.current && ['completed', 'failed'].includes(latest.current.run.status)) return;
+    if (!shouldStream) return;
+    streamedRef.current = true;
+    setConnection('connecting');
+    let closed = false;
+    let rehydrateTimer: number | undefined;
     const source = new EventSource(`/api/runs/${encodeURIComponent(id)}/events`);
+    const apply = (incoming: RunData, kind: string) => {
+      const merged = kind === 'snapshot' ? replaceFromSnapshot(latest.current, incoming) : mergeRunData(latest.current, incoming);
+      latest.current = merged;
+      setStreamData(merged);
+      queryClient.setQueryData(getGetRunQueryKey(id), merged);
+      queryClient.setQueryData(getGetLatestRunQueryKey(), (old: RunData | undefined) => old?.run.id === id ? merged : old);
+      return merged;
+    };
+    const rehydrate = (delay = 250) => {
+      window.clearTimeout(rehydrateTimer);
+      rehydrateTimer = window.setTimeout(() => {
+        getRun(id).then((fresh) => apply(fresh, 'snapshot')).catch(() => undefined);
+      }, delay);
+    };
+    const finish = () => {
+      if (closed) return;
+      closed = true;
+      source.close();
+      setConnection('complete');
+      setAttemptEvent(null);
+      // This fetch must survive the effect cleanup caused by the terminal status.
+      getRun(id).then((fresh) => apply(fresh, 'snapshot')).catch(() => undefined);
+    };
     const ingest = (raw: string, kind: string) => {
       try {
         const payload = JSON.parse(raw) as Record<string, unknown>;
         if (kind === 'attempt') {
-          const event = (payload.attempt || payload.data || payload) as AttemptEvent;
+          const event = (typeof payload.attempt === 'object' && payload.attempt !== null ? payload.attempt : payload.data || payload) as AttemptEvent;
           if (event.phase === 'retry_scheduled') setAttemptEvent(event);
-          else if (event.phase === 'started') {
-            setAttemptEvent((current) => current?.stepName === event.stepName ? null : current);
-          }
+          else setAttemptEvent((current) => current?.stepName === event.stepName ? null : current);
+          if (event.phase === 'interrupted') setLocalInterrupted((list) => list.includes(event.stepName) ? list : [...list, event.stepName]);
+          if (event.record && latest.current) apply({ ...latest.current, attempts: unionAttempts(latest.current.attempts, [event.record]) }, 'attempt');
+          rehydrate();
+          return;
+        }
+        if (kind === 'fault') {
+          const fault = (payload.fault || payload.data || payload) as RunFault;
+          if (fault.type === 'worker_crash') setLocalInterrupted((list) => list.includes(fault.stepName) ? list : [...list, fault.stepName]);
+          if (latest.current && fault.id) apply({ ...latest.current, faults: unionFaults(latest.current.faults, [fault]) }, 'fault');
+          rehydrate();
           return;
         }
         let incoming: RunData | null = null;
@@ -354,51 +550,35 @@ function useRunStream(id: string, initial: RunData | undefined) {
           const step = (payload.step || payload.data || payload) as Step;
           if (latest.current) incoming = { ...latest.current, steps: [...latest.current.steps.filter((item) => item.seq !== step.seq), step].sort((a, b) => a.seq - b.seq) };
         } else if (kind === 'run' && latest.current) {
-          const runUpdate = (payload.run || payload.data || payload) as Partial<Run>;
+          const runUpdate = (payload.run || payload.data || payload) as Partial<RunData['run']>;
           incoming = { ...latest.current, run: { ...latest.current.run, ...runUpdate } };
         }
         if (incoming) {
-          const merged = kind === 'snapshot'
-            ? replaceFromSnapshot(latest.current, incoming)
-            : mergeRunData(latest.current, incoming);
-          latest.current = merged;
-          setStreamData(merged);
-          queryClient.setQueryData(getGetRunQueryKey(id), merged);
-          queryClient.setQueryData(getGetLatestRunQueryKey(), (old: unknown) => {
-            const value = old as RunData | undefined;
-            return value?.run.id === id ? merged : old;
-          });
-          if (['completed', 'failed'].includes(merged.run.status)) {
-            setConnection('complete');
-            source.close();
-          }
+          const merged = apply(incoming, kind);
+          if (isTerminal(merged.run.status)) finish();
         }
       } catch {
         // Ignore malformed stream frames; EventSource will continue the connection.
       }
     };
-    source.onopen = () => setConnection('connected');
-    source.onerror = () => setConnection('reconnecting');
+    source.onopen = () => { if (!closed) setConnection('connected'); };
+    source.onerror = () => { if (!closed) setConnection('reconnecting'); };
     source.onmessage = (event) => ingest(event.data, 'message');
-    source.addEventListener('snapshot', (event) => ingest((event as MessageEvent).data, 'snapshot'));
-    source.addEventListener('step', (event) => ingest((event as MessageEvent).data, 'step'));
-    source.addEventListener('attempt', (event) => ingest((event as MessageEvent).data, 'attempt'));
-    source.addEventListener('run', (event) => ingest((event as MessageEvent).data, 'run'));
-    return () => source.close();
-  }, [id, queryClient]);
+    (['snapshot', 'step', 'attempt', 'run', 'fault'] as const).forEach((kind) => source.addEventListener(kind, (event) => ingest((event as MessageEvent).data, kind)));
+    return () => { closed = true; window.clearTimeout(rehydrateTimer); source.close(); };
+  }, [id, shouldStream, queryClient]);
   const remaining = attemptEvent?.phase === 'retry_scheduled'
     ? Math.max(0, (attemptEvent.retryInMs || 0) - (clock - Date.parse(attemptEvent.timestamp)))
     : 0;
-  return { data: streamData, connection, attemptEvent, retryRemainingMs: remaining };
+  return { data: streamData, connection, attemptEvent, retryRemainingMs: remaining, localInterrupted };
 }
 
 function RunPage() {
   const params = useParams<{ id: string }>();
   const id = params.id || '';
   const query = useGetRun(id, { query: { queryKey: getGetRunQueryKey(id), enabled: !!id, refetchOnWindowFocus: false } });
-  const initial = query.data as unknown as RunData | undefined;
-  const stream = useRunStream(id, initial);
-  return <AppFrame><main className="page-wrap"><RunView initial={initial || null} data={stream.data} isLoading={query.isLoading} error={query.isError} onRetry={() => void query.refetch()} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} /></main></AppFrame>;
+  const stream = useRunStream(id, query.data);
+  return <AppFrame><main className="page-wrap"><RunView initial={query.data || null} data={stream.data} isLoading={query.isLoading} error={query.isError} onRetry={() => void query.refetch()} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} localInterrupted={stream.localInterrupted} /></main></AppFrame>;
 }
 
 function ArchitectureDiagram() {
@@ -428,7 +608,7 @@ function ArchitectureDiagram() {
 
 function HowItWorks() {
   const latest = useGetLatestRun({ query: { queryKey: getGetLatestRunQueryKey(), retry: false } });
-  const latestData = latest.data as unknown as RunData | undefined;
+  const latestData = latest.data;
   const stream = useRunStream(latestData?.run.id || '', latestData);
   return <AppFrame><main className="page-wrap">
     <div className="page-heading"><div><div className="eyebrow">System overview</div><h1>From advisory to evidence.</h1><p>A small, observable pipeline keeps each conclusion tied to its source.</p></div></div>
@@ -438,7 +618,7 @@ function HowItWorks() {
       {latest.isLoading && <div className="loading-state" data-testid="status-latest-loading"><div className="skeleton" style={{ height: 155 }} /></div>}
       {latest.isError && <div className="empty-state" data-testid="status-latest-error">No latest run is available right now. <button className="nav-link" onClick={() => void latest.refetch()} data-testid="button-retry-latest">Try again</button></div>}
       {!latest.isLoading && !latest.isError && !latestData && <div className="empty-state">There are no runs to show yet. Start a review to see its live trace here.</div>}
-      {latestData && <RunView initial={latestData} data={stream.data} isLoading={false} error={false} onRetry={() => void latest.refetch()} showId={false} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} />}
+      {latestData && <RunView initial={latestData} data={stream.data} isLoading={false} error={false} onRetry={() => void latest.refetch()} showId={false} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} localInterrupted={stream.localInterrupted} />}
     </section>
     <div className="footer-note"><span>PATCHBRIEF / ARCHITECTURE</span><span>Every step leaves a record.</span></div>
   </main></AppFrame>;

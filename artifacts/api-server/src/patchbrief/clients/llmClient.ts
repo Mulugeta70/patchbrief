@@ -1,4 +1,5 @@
 import type { StepAttemptReporter } from "../pipelineTypes";
+import { injectBoundaryFault } from "../faults";
 import {
   HttpRequestError,
   parseRetryAfterMs,
@@ -36,6 +37,8 @@ export function createLlmClient(fetcher: typeof fetch = fetch): LlmClient {
     attempts?: StepAttemptReporter,
   ): Promise<string> {
     const operation = async (): Promise<string> => {
+      const fault = await injectBoundaryFault(attempts);
+      if (fault === "malformed_json") return "{ injected malformed JSON";
       const apiKey = process.env["OPENAI_API_KEY"];
       if (!apiKey) {
         throw new Error(

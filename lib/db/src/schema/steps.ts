@@ -30,6 +30,7 @@ export const stepsTable = pgTable(
     outputSummary: text("output_summary"),
     error: text("error"),
     fallbackUsed: boolean("fallback_used").notNull().default(false),
+    interrupted: boolean("interrupted").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow()

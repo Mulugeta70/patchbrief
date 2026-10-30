@@ -3,6 +3,7 @@ import { llmClient, type LlmClient } from "../clients/llmClient";
 import type { Advisory, AdvisoryAffectedProduct } from "../clients/advisoryClient";
 import { type PipelineStep, requirePriorOutput } from "../pipelineTypes";
 import { errorMessage } from "../retry";
+import { isWorkerStop } from "../workerErrors";
 
 export const extractedAdvisorySchema = z
   .object({
@@ -264,6 +265,10 @@ export function createExtractStep(
     async run(context) {
       const fetched = requirePriorOutput<FetchOutput>(context, "fetch");
       const advisory = fetched.advisory;
+      if (context.llmDisabledReason) {
+        return context.attempts.runLocal(async () =>
+          createFallback(advisory, context.llmDisabledReason!));
+      }
       const prompt = [
         "Extract vulnerability facts from the supplied advisory only.",
         "Do not use outside knowledge or infer missing values.",
@@ -280,6 +285,7 @@ export function createExtractStep(
       try {
         raw = await generateText(prompt, context.attempts);
       } catch (error) {
+        if (isWorkerStop(error)) throw error;
         return createFallback(advisory, errorMessage(error));
       }
 
@@ -296,6 +302,7 @@ export function createExtractStep(
         try {
           raw = await generateText(correctionPrompt, context.attempts);
         } catch (error) {
+          if (isWorkerStop(error)) throw error;
           return createFallback(advisory, errorMessage(error));
         }
 

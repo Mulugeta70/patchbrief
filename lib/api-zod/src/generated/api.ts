@@ -9,6 +9,14 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Health check
+ */
+export const GetHealthResponse = zod.object({
+  "status": zod.string()
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -30,10 +38,19 @@ export const CreateRunHeader = zod.object({
 
 export const createRunBodyInputMax = 20000;
 
+export const createRunBodySlowModeDefault = false;
+export const createRunBodyFaultsMax = 20;
+
 
 
 export const CreateRunBody = zod.object({
-  "input": zod.string().min(1).max(createRunBodyInputMax)
+  "input": zod.string().min(1).max(createRunBodyInputMax),
+  "slowMode": zod.boolean().default(createRunBodySlowModeDefault),
+  "faults": zod.array(zod.object({
+  "step": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
+  "type": zod.enum(['timeout', 'http_500', 'malformed_json', 'worker_crash']),
+  "times": zod.union([zod.union([zod.literal(1),zod.literal(2),zod.literal(3)]),zod.enum(['always'])])
+})).max(createRunBodyFaultsMax).optional()
 })
 
 export const CreateRunResponse = zod.object({
@@ -43,6 +60,11 @@ export const CreateRunResponse = zod.object({
   "input": zod.string(),
   "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
   "degraded": zod.boolean(),
+  "slowMode": zod.boolean(),
+  "resumeCount": zod.number().int(),
+  "workerId": zod.string().nullable(),
+  "leaseExpiresAt": zod.coerce.date().nullable(),
+  "llmDisabledReason": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "finishedAt": zod.coerce.date().nullable()
 }),
@@ -51,7 +73,7 @@ export const CreateRunResponse = zod.object({
   "runId": zod.string().uuid(),
   "seq": zod.number().int(),
   "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
-  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
+  "status": zod.enum(['pending', 'running', 'needs_input', 'completed', 'failed']),
   "attempt": zod.number().int(),
   "startedAt": zod.coerce.date().nullable(),
   "durationMs": zod.number().int().nullable(),
@@ -59,7 +81,29 @@ export const CreateRunResponse = zod.object({
   "outputSummary": zod.string().nullable(),
   "error": zod.string().nullable(),
   "fallbackUsed": zod.boolean(),
+  "interrupted": zod.boolean(),
   "updatedAt": zod.coerce.date()
+})),
+  "attempts": zod.array(zod.object({
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "attempt": zod.number().int(),
+  "startedAt": zod.coerce.date(),
+  "durationMs": zod.number().int().nullable(),
+  "error": zod.string().nullable(),
+  "retryInMs": zod.number().int().nullable(),
+  "status": zod.enum(['running', 'completed', 'failed', 'interrupted']),
+  "faultType": zod.string().nullable()
+})),
+  "faults": zod.array(zod.object({
+  "id": zod.string(),
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "type": zod.string(),
+  "remaining": zod.number().int().describe('Minus one means always'),
+  "initialTimes": zod.number().int().describe('Minus one means always'),
+  "injectedCount": zod.number().int(),
+  "createdAt": zod.coerce.date()
 }))
 })
 
@@ -74,6 +118,11 @@ export const GetLatestRunResponse = zod.object({
   "input": zod.string(),
   "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
   "degraded": zod.boolean(),
+  "slowMode": zod.boolean(),
+  "resumeCount": zod.number().int(),
+  "workerId": zod.string().nullable(),
+  "leaseExpiresAt": zod.coerce.date().nullable(),
+  "llmDisabledReason": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "finishedAt": zod.coerce.date().nullable()
 }),
@@ -82,7 +131,7 @@ export const GetLatestRunResponse = zod.object({
   "runId": zod.string().uuid(),
   "seq": zod.number().int(),
   "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
-  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
+  "status": zod.enum(['pending', 'running', 'needs_input', 'completed', 'failed']),
   "attempt": zod.number().int(),
   "startedAt": zod.coerce.date().nullable(),
   "durationMs": zod.number().int().nullable(),
@@ -90,7 +139,29 @@ export const GetLatestRunResponse = zod.object({
   "outputSummary": zod.string().nullable(),
   "error": zod.string().nullable(),
   "fallbackUsed": zod.boolean(),
+  "interrupted": zod.boolean(),
   "updatedAt": zod.coerce.date()
+})),
+  "attempts": zod.array(zod.object({
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "attempt": zod.number().int(),
+  "startedAt": zod.coerce.date(),
+  "durationMs": zod.number().int().nullable(),
+  "error": zod.string().nullable(),
+  "retryInMs": zod.number().int().nullable(),
+  "status": zod.enum(['running', 'completed', 'failed', 'interrupted']),
+  "faultType": zod.string().nullable()
+})),
+  "faults": zod.array(zod.object({
+  "id": zod.string(),
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "type": zod.string(),
+  "remaining": zod.number().int().describe('Minus one means always'),
+  "initialTimes": zod.number().int().describe('Minus one means always'),
+  "injectedCount": zod.number().int(),
+  "createdAt": zod.coerce.date()
 }))
 })
 
@@ -117,6 +188,11 @@ export const SubmitRunInputResponse = zod.object({
   "input": zod.string(),
   "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
   "degraded": zod.boolean(),
+  "slowMode": zod.boolean(),
+  "resumeCount": zod.number().int(),
+  "workerId": zod.string().nullable(),
+  "leaseExpiresAt": zod.coerce.date().nullable(),
+  "llmDisabledReason": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "finishedAt": zod.coerce.date().nullable()
 }),
@@ -125,7 +201,7 @@ export const SubmitRunInputResponse = zod.object({
   "runId": zod.string().uuid(),
   "seq": zod.number().int(),
   "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
-  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
+  "status": zod.enum(['pending', 'running', 'needs_input', 'completed', 'failed']),
   "attempt": zod.number().int(),
   "startedAt": zod.coerce.date().nullable(),
   "durationMs": zod.number().int().nullable(),
@@ -133,7 +209,29 @@ export const SubmitRunInputResponse = zod.object({
   "outputSummary": zod.string().nullable(),
   "error": zod.string().nullable(),
   "fallbackUsed": zod.boolean(),
+  "interrupted": zod.boolean(),
   "updatedAt": zod.coerce.date()
+})),
+  "attempts": zod.array(zod.object({
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "attempt": zod.number().int(),
+  "startedAt": zod.coerce.date(),
+  "durationMs": zod.number().int().nullable(),
+  "error": zod.string().nullable(),
+  "retryInMs": zod.number().int().nullable(),
+  "status": zod.enum(['running', 'completed', 'failed', 'interrupted']),
+  "faultType": zod.string().nullable()
+})),
+  "faults": zod.array(zod.object({
+  "id": zod.string(),
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "type": zod.string(),
+  "remaining": zod.number().int().describe('Minus one means always'),
+  "initialTimes": zod.number().int().describe('Minus one means always'),
+  "injectedCount": zod.number().int(),
+  "createdAt": zod.coerce.date()
 }))
 })
 
@@ -152,6 +250,11 @@ export const GetRunResponse = zod.object({
   "input": zod.string(),
   "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
   "degraded": zod.boolean(),
+  "slowMode": zod.boolean(),
+  "resumeCount": zod.number().int(),
+  "workerId": zod.string().nullable(),
+  "leaseExpiresAt": zod.coerce.date().nullable(),
+  "llmDisabledReason": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "finishedAt": zod.coerce.date().nullable()
 }),
@@ -160,7 +263,7 @@ export const GetRunResponse = zod.object({
   "runId": zod.string().uuid(),
   "seq": zod.number().int(),
   "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
-  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
+  "status": zod.enum(['pending', 'running', 'needs_input', 'completed', 'failed']),
   "attempt": zod.number().int(),
   "startedAt": zod.coerce.date().nullable(),
   "durationMs": zod.number().int().nullable(),
@@ -168,13 +271,35 @@ export const GetRunResponse = zod.object({
   "outputSummary": zod.string().nullable(),
   "error": zod.string().nullable(),
   "fallbackUsed": zod.boolean(),
+  "interrupted": zod.boolean(),
   "updatedAt": zod.coerce.date()
+})),
+  "attempts": zod.array(zod.object({
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "attempt": zod.number().int(),
+  "startedAt": zod.coerce.date(),
+  "durationMs": zod.number().int().nullable(),
+  "error": zod.string().nullable(),
+  "retryInMs": zod.number().int().nullable(),
+  "status": zod.enum(['running', 'completed', 'failed', 'interrupted']),
+  "faultType": zod.string().nullable()
+})),
+  "faults": zod.array(zod.object({
+  "id": zod.string(),
+  "runId": zod.string(),
+  "stepName": zod.string(),
+  "type": zod.string(),
+  "remaining": zod.number().int().describe('Minus one means always'),
+  "initialTimes": zod.number().int().describe('Minus one means always'),
+  "injectedCount": zod.number().int(),
+  "createdAt": zod.coerce.date()
 }))
 })
 
 
 /**
- * Server-Sent Events stream. Sends a snapshot event, step events containing a full Step object, attempt events for starts, failures and scheduled retries, and run events containing status and degraded state. Active streams receive keepalive comments every fifteen seconds.
+ * Server-Sent Events stream. Sends a snapshot event, step events containing a full Step object, attempt events for starts, completions, failures, interruptions and scheduled retries, fault events containing the updated RunFault, and run events containing the full Run. Active streams receive keepalive comments every fifteen seconds.
  * @summary Stream live run events
  */
 export const StreamRunEventsParams = zod.object({

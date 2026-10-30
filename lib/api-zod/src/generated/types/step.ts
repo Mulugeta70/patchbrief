@@ -27,5 +27,6 @@ export interface Step {
   /** @nullable */
   error: string | null;
   fallbackUsed: boolean;
+  interrupted: boolean;
   updatedAt: Date;
 }

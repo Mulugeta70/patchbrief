@@ -12,13 +12,12 @@ import {
 } from "@workspace/api-zod";
 import {
   createRun,
-  DailyRunLimitError,
   getLatestRunWithSteps,
   getRunWithSteps,
   resumeRunWithInput,
 } from "../patchbrief/db";
 import { subscribeToRun, type RunStreamEvent } from "../patchbrief/events";
-import { runPipeline } from "../patchbrief/runner";
+import { wakeWorkers } from "../patchbrief/recovery";
 import { runCreationRateLimit } from "../middlewares/runCreationRateLimit";
 
 const router: IRouter = Router();
@@ -43,7 +42,12 @@ router.post("/runs", runCreationRateLimit, async (req, res, next): Promise<void>
 
   const parsedBody = CreateRunBody.safeParse(req.body);
   if (!parsedBody.success || parsedBody.data.input.trim().length === 0) {
-    res.status(400).json({ error: "Request body must include a non-empty input string." });
+    res.status(400).json({ error: "Invalid input or fault configuration. Supply non-empty input, valid fault types, and times of 1, 2, 3, or always." });
+    return;
+  }
+  if (parsedBody.data.faults?.some((fault) =>
+    fault.type !== "worker_crash" && !["fetch", "extract", "plan"].includes(fault.step))) {
+    res.status(400).json({ error: "Network/JSON faults require fetch, extract, or plan. Worker crashes may target any step." });
     return;
   }
 
@@ -51,6 +55,7 @@ router.post("/runs", runCreationRateLimit, async (req, res, next): Promise<void>
     const { run, created } = await createRun(
       parsedBody.data.input,
       parsedHeader.data["Idempotency-Key"],
+      { faults: parsedBody.data.faults, slowMode: parsedBody.data.slowMode },
     );
     if (!created) {
       const existing = await getRunWithSteps(run.id);
@@ -62,9 +67,7 @@ router.post("/runs", runCreationRateLimit, async (req, res, next): Promise<void>
       return;
     }
 
-    void runPipeline(run.id, parsedBody.data.input).catch((error: unknown) => {
-      req.log.error({ err: error, runId: run.id }, "Pipeline runner failed unexpectedly");
-    });
+    void wakeWorkers();
     const createdRun = await getRunWithSteps(run.id);
     if (!createdRun) {
       res.status(500).json({ error: "The new run could not be loaded." });
@@ -72,10 +75,6 @@ router.post("/runs", runCreationRateLimit, async (req, res, next): Promise<void>
     }
     res.status(201).json(CreateRunResponse.parse(createdRun));
   } catch (error) {
-    if (error instanceof DailyRunLimitError) {
-      res.status(429).json({ error: error.message });
-      return;
-    }
     next(error);
   }
 });
@@ -129,14 +128,7 @@ router.post("/runs/:id/input", async (req, res, next): Promise<void> => {
       return;
     }
 
-    void runPipeline(resumed.run.id, parsedBody.data.input).catch(
-      (error: unknown) => {
-        req.log.error(
-          { err: error, runId: resumed.run.id },
-          "Resumed pipeline runner failed unexpectedly",
-        );
-      },
-    );
+    void wakeWorkers();
     const result = await getRunWithSteps(resumed.run.id);
     if (!result) {
       res.status(500).json({ error: "The resumed run could not be loaded." });
@@ -181,6 +173,7 @@ router.get("/runs/:id/events", async (req, res, next): Promise<void> => {
     }
     if (event.type === "step") writeEvent("step", event.step);
     else if (event.type === "attempt") writeEvent("attempt", event.attempt);
+    else if (event.type === "fault") writeEvent("fault", event.fault);
     else writeEvent("run", event.run);
     if (
       event.type === "run" &&
@@ -226,6 +219,7 @@ router.get("/runs/:id/events", async (req, res, next): Promise<void> => {
       }
       if (event.type === "step") writeEvent("step", event.step);
       else if (event.type === "attempt") writeEvent("attempt", event.attempt);
+      else if (event.type === "fault") writeEvent("fault", event.fault);
       else writeEvent("run", event.run);
       if (
         event.type === "run" &&

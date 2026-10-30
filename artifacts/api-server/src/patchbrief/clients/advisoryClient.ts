@@ -1,3 +1,4 @@
+import { injectBoundaryFault } from "../faults";
 import type { StepAttemptReporter } from "../pipelineTypes";
 import {
   HttpRequestError,
@@ -197,6 +198,10 @@ export function createAdvisoryClient(fetcher: typeof fetch = fetch) {
     url.searchParams.set("cveIds", cveId);
 
     const operation = async (): Promise<Advisory> => {
+      const fault = await injectBoundaryFault(attempts);
+      if (fault === "malformed_json") {
+        await new Response("{ injected malformed JSON").json();
+      }
       const response = await fetcher(url, {
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(15_000),

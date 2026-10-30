@@ -10,9 +10,11 @@ export interface PipelineContext {
   attempts: StepAttemptReporter;
   degraded: boolean;
   fallbackSteps: string[];
+  llmDisabledReason?: string | null;
 }
 
 export interface StepAttemptReporter {
+  injectFault?(): Promise<import("./faults").FaultType | null>;
   runLocal<T>(operation: () => Promise<T>): Promise<T>;
   runExternal<T>(operation: () => Promise<T>): Promise<T>;
   markLastAttemptFailed(error: string, retryInMs: number | null): Promise<void>;

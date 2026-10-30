@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdvisoryInput,
   ApiError,
   HealthStatus,
   RunInput,
@@ -52,6 +53,83 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetHealthUrl = () => {
+
+
+
+
+  return `/api/health`
+}
+
+/**
+ * @summary Health check
+ */
+export const getHealth = async ( options?: Parameters<typeof customFetch>[1]): Promise<HealthStatus> => {
+
+  return customFetch<HealthStatus>(getGetHealthUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHealthQueryKey = () => {
+    return [
+    `/api/health`
+    ] as const;
+    }
+
+
+export const getGetHealthQueryOptions = <TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHealthQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHealth>>> = ({ signal }) => getHealth({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getHealth>>>
+export type GetHealthQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Health check
+ */
+
+export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHealthQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 
@@ -308,7 +386,7 @@ export const getSubmitRunInputUrl = (id: string,) => {
  * @summary Resume a run with pasted advisory text
  */
 export const submitRunInput = async (id: string,
-    runInput: RunInput, options?: Parameters<typeof customFetch>[1]): Promise<RunWithSteps> => {
+    advisoryInput: AdvisoryInput, options?: Parameters<typeof customFetch>[1]): Promise<RunWithSteps> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -329,7 +407,7 @@ return customFetch<RunWithSteps>(getSubmitRunInputUrl(id),
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(runInput)
+    body: JSON.stringify(advisoryInput)
   }
 );}
 
@@ -367,9 +445,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type SubmitRunInputMutationResult = NonNullable<Awaited<ReturnType<typeof submitRunInput>>>
-    export type SubmitRunInputMutationBody = BodyType<RunInput>
+    export type SubmitRunInputMutationBody = BodyType<AdvisoryInput>
     export type SubmitRunInputMutationError = ErrorType<ApiError>
-    export type SubmitRunInputMutationVariables = {id: string;data: BodyType<RunInput>}
+    export type SubmitRunInputMutationVariables = {id: string;data: BodyType<AdvisoryInput>}
 
     /**
  * @summary Resume a run with pasted advisory text
@@ -471,7 +549,7 @@ export const getStreamRunEventsUrl = (id: string,) => {
 }
 
 /**
- * Server-Sent Events stream. Sends a snapshot event, step events containing a full Step object, attempt events for starts, failures and scheduled retries, and run events containing status and degraded state. Active streams receive keepalive comments every fifteen seconds.
+ * Server-Sent Events stream. Sends a snapshot event, step events containing a full Step object, attempt events for starts, completions, failures, interruptions and scheduled retries, fault events containing the updated RunFault, and run events containing the full Run. Active streams receive keepalive comments every fifteen seconds.
  * @summary Stream live run events
  */
 export const streamRunEvents = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<string> => {

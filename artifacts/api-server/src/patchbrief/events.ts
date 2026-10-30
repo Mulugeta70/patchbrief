@@ -1,13 +1,14 @@
 import { EventEmitter } from "node:events";
-import type { Run, Step } from "@workspace/db";
+import type { Run, Step, StepAttempt, RunFault } from "@workspace/db";
 
 export type RunStreamEvent =
   | { type: "step"; runId: string; step: Step }
   | { type: "attempt"; runId: string; attempt: AttemptStreamEvent }
+  | { type: "fault"; runId: string; fault: RunFault }
   | {
       type: "run";
       runId: string;
-      run: Pick<Run, "id" | "status" | "degraded" | "input">;
+      run: Run;
     };
 
 export interface AttemptStreamEvent {
@@ -15,7 +16,8 @@ export interface AttemptStreamEvent {
   stepId: string;
   stepName: string;
   attempt: number;
-  phase: "started" | "failed" | "retry_scheduled";
+  phase: "started" | "failed" | "retry_scheduled" | "completed" | "interrupted";
+  record?: StepAttempt;
   timestamp: string;
   durationMs?: number;
   retryInMs?: number;
@@ -29,9 +31,13 @@ export function publishStep(step: Step): void {
 }
 
 export function publishRunUpdate(
-  run: Pick<Run, "id" | "status" | "degraded" | "input">,
+  run: Run,
 ): void {
   events.emit(run.id, { type: "run", runId: run.id, run } satisfies RunStreamEvent);
+}
+
+export function publishFault(fault: RunFault): void {
+  events.emit(fault.runId, { type: "fault", runId: fault.runId, fault } satisfies RunStreamEvent);
 }
 
 export function publishAttempt(attempt: AttemptStreamEvent): void {

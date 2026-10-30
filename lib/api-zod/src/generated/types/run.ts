@@ -13,6 +13,14 @@ export interface Run {
   input: string;
   status: RunStatus;
   degraded: boolean;
+  slowMode: boolean;
+  resumeCount: number;
+  /** @nullable */
+  workerId: string | null;
+  /** @nullable */
+  leaseExpiresAt: Date | null;
+  /** @nullable */
+  llmDisabledReason: string | null;
   createdAt: Date;
   /** @nullable */
   finishedAt: Date | null;

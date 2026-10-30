@@ -13,6 +13,18 @@ tags:
   - name: runs
     description: PatchBrief pipeline runs
 paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
   /healthz:
     get:
       operationId: healthCheck
@@ -71,7 +83,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
         "429":
-          description: Per-IP rate limit or daily run cap reached
+          description: Per-IP rate limit reached
           content:
             application/json:
               schema:
@@ -111,7 +123,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RunInput"
+              $ref: "#/components/schemas/AdvisoryInput"
       responses:
         "202":
           description: Run resumed from fetch with the supplied advisory
@@ -175,8 +187,9 @@ paths:
       summary: Stream live run events
       description: >-
         Server-Sent Events stream. Sends a snapshot event, step events
-        containing a full Step object, attempt events for starts, failures and
-        scheduled retries, and run events containing status and degraded state.
+        containing a full Step object, attempt events for starts, completions,
+        failures, interruptions and scheduled retries, fault events containing
+        the updated RunFault, and run events containing the full Run.
         Active streams receive keepalive comments every fifteen seconds.
       parameters:
         - in: path
@@ -220,7 +233,39 @@ components:
           type: string
           minLength: 1
           maxLength: 20000
+        slowMode:
+          type: boolean
+          default: false
+        faults:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/FaultInput"
       required: [input]
+    AdvisoryInput:
+      type: object
+      properties:
+        input:
+          type: string
+          minLength: 1
+          maxLength: 20000
+      required: [input]
+    FaultInput:
+      type: object
+      properties:
+        step:
+          type: string
+          enum: [fetch, extract, assess, plan, brief]
+        type:
+          type: string
+          enum: [timeout, http_500, malformed_json, worker_crash]
+        times:
+          oneOf:
+            - type: integer
+              enum: [1, 2, 3]
+            - type: string
+              enum: [always]
+      required: [step, type, times]
     Run:
       type: object
       properties:
@@ -236,13 +281,24 @@ components:
           enum: [queued, running, needs_input, completed, failed]
         degraded:
           type: boolean
+        slowMode:
+          type: boolean
+        resumeCount:
+          type: integer
+        workerId:
+          type: [string, "null"]
+        leaseExpiresAt:
+          type: [string, "null"]
+          format: date-time
+        llmDisabledReason:
+          type: [string, "null"]
         createdAt:
           type: string
           format: date-time
         finishedAt:
           type: [string, "null"]
           format: date-time
-      required: [id, idempotencyKey, input, status, degraded, createdAt, finishedAt]
+      required: [id, idempotencyKey, input, status, degraded, slowMode, resumeCount, workerId, leaseExpiresAt, llmDisabledReason, createdAt, finishedAt]
     Step:
       type: object
       properties:
@@ -259,7 +315,7 @@ components:
           enum: [fetch, extract, assess, plan, brief]
         status:
           type: string
-          enum: [running, needs_input, completed, failed]
+          enum: [pending, running, needs_input, completed, failed]
         attempt:
           type: integer
         startedAt:
@@ -275,6 +331,8 @@ components:
         error:
           type: [string, "null"]
         fallbackUsed:
+          type: boolean
+        interrupted:
           type: boolean
         updatedAt:
           type: string
@@ -292,6 +350,7 @@ components:
         - outputSummary
         - error
         - fallbackUsed
+        - interrupted
         - updatedAt
     RunWithSteps:
       type: object
@@ -302,4 +361,59 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Step"
-      required: [run, steps]
+        attempts:
+          type: array
+          items:
+            $ref: "#/components/schemas/StepAttempt"
+        faults:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunFault"
+      required: [run, steps, attempts, faults]
+    StepAttempt:
+      type: object
+      properties:
+        runId:
+          type: string
+        stepName:
+          type: string
+        attempt:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: [integer, "null"]
+        error:
+          type: [string, "null"]
+        retryInMs:
+          type: [integer, "null"]
+        status:
+          type: string
+          enum: [running, completed, failed, interrupted]
+        faultType:
+          type: [string, "null"]
+      required: [runId, stepName, attempt, startedAt, durationMs, error, retryInMs, status, faultType]
+    RunFault:
+      type: object
+      properties:
+        id:
+          type: string
+        runId:
+          type: string
+        stepName:
+          type: string
+        type:
+          type: string
+        remaining:
+          type: integer
+          description: Minus one means always
+        initialTimes:
+          type: integer
+          description: Minus one means always
+        injectedCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, runId, stepName, type, remaining, initialTimes, injectedCount, createdAt]

@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { isWorkerStop } from "./workerErrors";
 
 export interface RetryAttemptHooks {
   start(): Promise<number>;
@@ -106,6 +107,7 @@ export async function retryTransient<T>(
       await hooks.succeed(attempt, Math.max(0, Math.round(performance.now() - startedAt)));
       return result;
     } catch (error) {
+      if (isWorkerStop(error)) throw error;
       const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
       const transient = isTransientFailure(error);
       const shouldRetry = transient && retryNumber < maxAttempts;
