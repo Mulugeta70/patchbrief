@@ -1,6 +1,6 @@
-# [Project name]
+# PatchBrief
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+PatchBrief runs an ordered placeholder analysis pipeline and stores each run and step in PostgreSQL.
 
 ## Run & Operate
 
@@ -22,7 +22,9 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/api-server/src/routes/runs.ts` — run creation and retrieval API
+- `artifacts/api-server/src/patchbrief/` — database access, pipeline runner, and placeholder steps
+- `lib/db/src/schema/` — PostgreSQL table definitions
 
 ## Architecture decisions
 
@@ -30,7 +32,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+PatchBrief accepts a text input, executes five sequential placeholder steps, and exposes persisted run and step results through the API.
 
 ## User preferences
 
