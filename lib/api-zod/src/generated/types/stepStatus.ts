@@ -11,6 +11,7 @@ export type StepStatus = typeof StepStatus[keyof typeof StepStatus];
 
 export const StepStatus = {
   running: 'running',
+  needs_input: 'needs_input',
   completed: 'completed',
   failed: 'failed',
 } as const;

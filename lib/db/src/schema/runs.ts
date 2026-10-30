@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   pgTable,
   text,
   timestamp,
@@ -22,6 +23,7 @@ export const runsTable = pgTable(
   },
   (table) => [
     uniqueIndex("runs_idempotency_key_unique").on(table.idempotencyKey),
+    index("runs_created_at_index").on(table.createdAt),
   ],
 );
 

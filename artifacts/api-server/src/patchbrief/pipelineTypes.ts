@@ -7,6 +7,22 @@ export interface PipelineOutput extends Record<string, unknown> {
 export interface PipelineContext {
   input: string;
   priorOutputs: Partial<Record<StepName, PipelineOutput>>;
+  attempts: StepAttemptReporter;
+  degraded: boolean;
+  fallbackSteps: string[];
+}
+
+export interface StepAttemptReporter {
+  runLocal<T>(operation: () => Promise<T>): Promise<T>;
+  runExternal<T>(operation: () => Promise<T>): Promise<T>;
+  markLastAttemptFailed(error: string, retryInMs: number | null): Promise<void>;
+}
+
+export class NeedsInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NeedsInputError";
+  }
 }
 
 export interface PipelineStep {

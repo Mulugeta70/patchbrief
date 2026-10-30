@@ -12,6 +12,7 @@ export type RunStatus = typeof RunStatus[keyof typeof RunStatus];
 export const RunStatus = {
   queued: 'queued',
   running: 'running',
+  needs_input: 'needs_input',
   completed: 'completed',
   failed: 'failed',
 } as const;

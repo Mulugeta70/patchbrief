@@ -14,7 +14,10 @@ export interface ApiError {
 }
 
 export interface RunInput {
-  /** @minLength 1 */
+  /**
+     * @minLength 1
+     * @maxLength 20000
+     */
   input: string;
 }
 
@@ -24,6 +27,7 @@ export type RunStatus = typeof RunStatus[keyof typeof RunStatus];
 export const RunStatus = {
   queued: 'queued',
   running: 'running',
+  needs_input: 'needs_input',
   completed: 'completed',
   failed: 'failed',
 } as const;
@@ -55,6 +59,7 @@ export type StepStatus = typeof StepStatus[keyof typeof StepStatus];
 
 export const StepStatus = {
   running: 'running',
+  needs_input: 'needs_input',
   completed: 'completed',
   failed: 'failed',
 } as const;

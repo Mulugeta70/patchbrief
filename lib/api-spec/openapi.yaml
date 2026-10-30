@@ -64,6 +64,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "413":
+          description: Input exceeds the 20,000 character limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: Per-IP rate limit or daily run cap reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /runs/latest:
     get:
       operationId: getLatestRun
@@ -78,6 +90,55 @@ paths:
                 $ref: "#/components/schemas/RunWithSteps"
         "404":
           description: No runs exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /runs/{id}/input:
+    post:
+      operationId: submitRunInput
+      tags: [runs]
+      summary: Resume a run with pasted advisory text
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunInput"
+      responses:
+        "202":
+          description: Run resumed from fetch with the supplied advisory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWithSteps"
+        "400":
+          description: Invalid or empty advisory input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Run is not waiting for input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "413":
+          description: Input exceeds the 20,000 character limit
           content:
             application/json:
               schema:
@@ -113,10 +174,10 @@ paths:
       tags: [runs]
       summary: Stream live run events
       description: >-
-        Server-Sent Events stream. Sends a snapshot event, then step events
-        containing a full Step object, and a run event containing final status
-        and degraded state. Active streams receive keepalive comments every
-        fifteen seconds.
+        Server-Sent Events stream. Sends a snapshot event, step events
+        containing a full Step object, attempt events for starts, failures and
+        scheduled retries, and run events containing status and degraded state.
+        Active streams receive keepalive comments every fifteen seconds.
       parameters:
         - in: path
           name: id
@@ -158,6 +219,7 @@ components:
         input:
           type: string
           minLength: 1
+          maxLength: 20000
       required: [input]
     Run:
       type: object
@@ -171,7 +233,7 @@ components:
           type: string
         status:
           type: string
-          enum: [queued, running, completed, failed]
+          enum: [queued, running, needs_input, completed, failed]
         degraded:
           type: boolean
         createdAt:
@@ -197,7 +259,7 @@ components:
           enum: [fetch, extract, assess, plan, brief]
         status:
           type: string
-          enum: [running, completed, failed]
+          enum: [running, needs_input, completed, failed]
         attempt:
           type: integer
         startedAt:

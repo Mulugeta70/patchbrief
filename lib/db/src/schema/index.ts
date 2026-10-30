@@ -19,4 +19,5 @@
 
 export * from "./runs";
 export * from "./steps";
+export * from "./step-attempts";
 export * from "./stack-items";

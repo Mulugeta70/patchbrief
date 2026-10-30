@@ -1,7 +1,8 @@
 import { z } from "zod/v4";
-import { llmClient } from "../clients/llmClient";
+import { llmClient, type LlmClient } from "../clients/llmClient";
 import type { ExtractedAdvisory } from "./extract";
 import { requirePriorOutput, type PipelineStep } from "../pipelineTypes";
+import { errorMessage } from "../retry";
 
 interface AssessedItem {
   name: string;
@@ -48,8 +49,25 @@ function parseChecklist(raw: string): string[] {
   return result.data.checklist;
 }
 
+function createFallbackChecklist(
+  affectedItems: AssessedItem[],
+  fixedIn: string | null,
+): string[] {
+  const names = affectedItems.map((item) => `${item.name} ${item.version}`);
+  const targets = affectedItems.map((item) => item.name).join(", ");
+  const fixedRelease = fixedIn
+    ? `the advisory lists ${fixedIn} as fixed`
+    : "the advisory does not list a fixed version";
+
+  return [
+    `Confirm the vendor-fixed release for ${names.join(", ")}; ${fixedRelease}.`,
+    `Upgrade only the affected tracked items (${targets}) to the vendor-confirmed fixed releases.`,
+    `Verify the deployed versions of ${targets} and rerun the assessment.`,
+  ];
+}
+
 export function createPlanStep(
-  generateText: typeof llmClient = llmClient,
+  generateText: LlmClient = llmClient,
 ): PipelineStep {
   return {
     name: "plan",
@@ -59,9 +77,12 @@ export function createPlanStep(
       if (assessment.affected_items.length === 0) {
         const note =
           assessment.undetermined_items.length > 0
-            ? `No action needed for confirmed affected items; version comparison is inconclusive for ${assessment.undetermined_items.map((item) => `${item.name} ${item.version}`).join(", ")}.`
+            ? "No action needed for confirmed affected stack items; some version comparisons are inconclusive."
             : "No action needed for the tracked stack items.";
-        return { output_summary: note, checklist: [note] };
+        return context.attempts.runLocal(async () => ({
+          output_summary: note,
+          checklist: [note],
+        }));
       }
 
       const prompt = [
@@ -74,25 +95,46 @@ export function createPlanStep(
         `Advisory CVE and summary: ${JSON.stringify({ cve_id: extracted.cve_id, summary: extracted.summary })}`,
       ].join("\n");
 
-      const checklist = parseChecklist(await generateText(prompt));
-      const affectedNames = assessment.affected_items.map((item) =>
-        item.name.toLowerCase(),
-      );
-      if (
-        checklist.some(
-          (item) =>
-            !affectedNames.some((name) => item.toLowerCase().includes(name)),
-        )
-      ) {
-        throw new Error(
-          "LLM remediation output mentioned a checklist item without naming an affected stack item.",
-        );
-      }
+      try {
+        const raw = await generateText(prompt, context.attempts);
+        let checklist: string[];
+        try {
+          checklist = parseChecklist(raw);
+          const affectedNames = assessment.affected_items.map((item) =>
+            item.name.toLowerCase(),
+          );
+          if (
+            checklist.some(
+              (item) =>
+                !affectedNames.some((name) => item.toLowerCase().includes(name)),
+            )
+          ) {
+            throw new Error(
+              "LLM remediation output mentioned a checklist item without naming an affected stack item.",
+            );
+          }
+        } catch (error) {
+          await context.attempts.markLastAttemptFailed(errorMessage(error), null);
+          throw error;
+        }
 
-      return {
-        output_summary: checklist[0] ?? "Remediation checklist generated.",
-        checklist,
-      };
+        return {
+          output_summary: checklist[0] ?? "Remediation checklist generated.",
+          checklist,
+        };
+      } catch (error) {
+        const reason = errorMessage(error);
+        return {
+          output_summary:
+            "Created a remediation checklist from the affected stack table (fallback).",
+          checklist: createFallbackChecklist(
+            assessment.affected_items,
+            extracted.fixed_in,
+          ),
+          fallback_used: true,
+          fallback_reason: reason,
+        };
+      }
     },
   };
 }

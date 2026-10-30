@@ -28,11 +28,12 @@ export const CreateRunHeader = zod.object({
   "Idempotency-Key": zod.string().min(1).max(createRunHeaderIdempotencyKeyMax)
 })
 
+export const createRunBodyInputMax = 20000;
 
 
 
 export const CreateRunBody = zod.object({
-  "input": zod.string().min(1)
+  "input": zod.string().min(1).max(createRunBodyInputMax)
 })
 
 export const CreateRunResponse = zod.object({
@@ -40,7 +41,7 @@ export const CreateRunResponse = zod.object({
   "id": zod.string().uuid(),
   "idempotencyKey": zod.string(),
   "input": zod.string(),
-  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
   "degraded": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "finishedAt": zod.coerce.date().nullable()
@@ -50,7 +51,7 @@ export const CreateRunResponse = zod.object({
   "runId": zod.string().uuid(),
   "seq": zod.number().int(),
   "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
-  "status": zod.enum(['running', 'completed', 'failed']),
+  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
   "attempt": zod.number().int(),
   "startedAt": zod.coerce.date().nullable(),
   "durationMs": zod.number().int().nullable(),
@@ -71,7 +72,7 @@ export const GetLatestRunResponse = zod.object({
   "id": zod.string().uuid(),
   "idempotencyKey": zod.string(),
   "input": zod.string(),
-  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
   "degraded": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "finishedAt": zod.coerce.date().nullable()
@@ -81,7 +82,50 @@ export const GetLatestRunResponse = zod.object({
   "runId": zod.string().uuid(),
   "seq": zod.number().int(),
   "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
-  "status": zod.enum(['running', 'completed', 'failed']),
+  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
+  "attempt": zod.number().int(),
+  "startedAt": zod.coerce.date().nullable(),
+  "durationMs": zod.number().int().nullable(),
+  "output": zod.record(zod.string(), zod.unknown()).nullable(),
+  "outputSummary": zod.string().nullable(),
+  "error": zod.string().nullable(),
+  "fallbackUsed": zod.boolean(),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Resume a run with pasted advisory text
+ */
+export const SubmitRunInputParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const submitRunInputBodyInputMax = 20000;
+
+
+
+export const SubmitRunInputBody = zod.object({
+  "input": zod.string().min(1).max(submitRunInputBodyInputMax)
+})
+
+export const SubmitRunInputResponse = zod.object({
+  "run": zod.object({
+  "id": zod.string().uuid(),
+  "idempotencyKey": zod.string(),
+  "input": zod.string(),
+  "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
+  "degraded": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "finishedAt": zod.coerce.date().nullable()
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "runId": zod.string().uuid(),
+  "seq": zod.number().int(),
+  "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
+  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
   "attempt": zod.number().int(),
   "startedAt": zod.coerce.date().nullable(),
   "durationMs": zod.number().int().nullable(),
@@ -106,7 +150,7 @@ export const GetRunResponse = zod.object({
   "id": zod.string().uuid(),
   "idempotencyKey": zod.string(),
   "input": zod.string(),
-  "status": zod.enum(['queued', 'running', 'completed', 'failed']),
+  "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
   "degraded": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "finishedAt": zod.coerce.date().nullable()
@@ -116,7 +160,7 @@ export const GetRunResponse = zod.object({
   "runId": zod.string().uuid(),
   "seq": zod.number().int(),
   "name": zod.enum(['fetch', 'extract', 'assess', 'plan', 'brief']),
-  "status": zod.enum(['running', 'completed', 'failed']),
+  "status": zod.enum(['running', 'needs_input', 'completed', 'failed']),
   "attempt": zod.number().int(),
   "startedAt": zod.coerce.date().nullable(),
   "durationMs": zod.number().int().nullable(),
@@ -130,7 +174,7 @@ export const GetRunResponse = zod.object({
 
 
 /**
- * Server-Sent Events stream. Sends a snapshot event, then step events containing a full Step object, and a run event containing final status and degraded state. Active streams receive keepalive comments every fifteen seconds.
+ * Server-Sent Events stream. Sends a snapshot event, step events containing a full Step object, attempt events for starts, failures and scheduled retries, and run events containing status and degraded state. Active streams receive keepalive comments every fifteen seconds.
  * @summary Stream live run events
  */
 export const StreamRunEventsParams = zod.object({

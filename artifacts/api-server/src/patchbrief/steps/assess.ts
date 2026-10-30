@@ -135,31 +135,33 @@ export function createAssessStep(
   return {
     name: "assess",
     async run(context) {
-      const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
-      const stackItems = await readStackItems();
+      return context.attempts.runLocal(async () => {
+        const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
+        const stackItems = await readStackItems();
 
-      const items = stackItems.map((item) =>
-        compareStackItem(item, extracted.affected),
-      );
-      const affectedItems = items.filter((item) => item.status === "affected");
-      const notAffectedItems = items.filter(
-        (item) => item.status === "not_affected",
-      );
-      const undeterminedItems = items.filter(
-        (item) => item.status === "undetermined",
-      );
-      const severity = severityBand(extracted.cvss);
-      const summary = `${affectedItems.length} tracked stack item(s) affected; severity ${severity}.`;
+        const items = stackItems.map((item) =>
+          compareStackItem(item, extracted.affected),
+        );
+        const affectedItems = items.filter((item) => item.status === "affected");
+        const notAffectedItems = items.filter(
+          (item) => item.status === "not_affected",
+        );
+        const undeterminedItems = items.filter(
+          (item) => item.status === "undetermined",
+        );
+        const severity = severityBand(extracted.cvss);
+        const summary = `${affectedItems.length} tracked stack item(s) affected; severity ${severity}.`;
 
-      return {
-        output_summary: summary,
-        cvss: extracted.cvss,
-        severity,
-        items,
-        affected_items: affectedItems,
-        not_affected_items: notAffectedItems,
-        undetermined_items: undeterminedItems,
-      };
+        return {
+          output_summary: summary,
+          cvss: extracted.cvss,
+          severity,
+          items,
+          affected_items: affectedItems,
+          not_affected_items: notAffectedItems,
+          undetermined_items: undeterminedItems,
+        };
+      });
     },
   };
 }

@@ -296,6 +296,95 @@ export function useGetLatestRun<TData = Awaited<ReturnType<typeof getLatestRun>>
 
 
 
+export const getSubmitRunInputUrl = (id: string,) => {
+
+
+
+
+  return `/api/runs/${id}/input`
+}
+
+/**
+ * @summary Resume a run with pasted advisory text
+ */
+export const submitRunInput = async (id: string,
+    runInput: RunInput, options?: Parameters<typeof customFetch>[1]): Promise<RunWithSteps> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<RunWithSteps>(getSubmitRunInputUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(runInput)
+  }
+);}
+
+
+
+
+
+export const getSubmitRunInputMutationKey = () => ['submitRunInput'] as const;
+
+export const getSubmitRunInputMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitRunInput>>, TError,SubmitRunInputMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitRunInput>>, TError,SubmitRunInputMutationVariables, TContext> => {
+
+const mutationKey = getSubmitRunInputMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitRunInput>>, SubmitRunInputMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  submitRunInput(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitRunInputMutationResult = NonNullable<Awaited<ReturnType<typeof submitRunInput>>>
+    export type SubmitRunInputMutationBody = BodyType<RunInput>
+    export type SubmitRunInputMutationError = ErrorType<ApiError>
+    export type SubmitRunInputMutationVariables = {id: string;data: BodyType<RunInput>}
+
+    /**
+ * @summary Resume a run with pasted advisory text
+ */
+export const useSubmitRunInput = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitRunInput>>, TError,SubmitRunInputMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitRunInput>>,
+        TError,
+        SubmitRunInputMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSubmitRunInputMutationOptions(options));
+    }
+
 export const getGetRunUrl = (id: string,) => {
 
 
@@ -382,7 +471,7 @@ export const getStreamRunEventsUrl = (id: string,) => {
 }
 
 /**
- * Server-Sent Events stream. Sends a snapshot event, then step events containing a full Step object, and a run event containing final status and degraded state. Active streams receive keepalive comments every fifteen seconds.
+ * Server-Sent Events stream. Sends a snapshot event, step events containing a full Step object, attempt events for starts, failures and scheduled retries, and run events containing status and degraded state. Active streams receive keepalive comments every fifteen seconds.
  * @summary Stream live run events
  */
 export const streamRunEvents = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<string> => {

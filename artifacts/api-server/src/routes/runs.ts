@@ -6,24 +6,38 @@ import {
   GetLatestRunResponse,
   GetRunParams,
   GetRunResponse,
+  SubmitRunInputBody,
+  SubmitRunInputParams,
   StreamRunEventsParams,
 } from "@workspace/api-zod";
 import {
   createRun,
+  DailyRunLimitError,
   getLatestRunWithSteps,
   getRunWithSteps,
+  resumeRunWithInput,
 } from "../patchbrief/db";
 import { subscribeToRun, type RunStreamEvent } from "../patchbrief/events";
 import { runPipeline } from "../patchbrief/runner";
+import { runCreationRateLimit } from "../middlewares/runCreationRateLimit";
 
 const router: IRouter = Router();
 
-router.post("/runs", async (req, res, next): Promise<void> => {
+router.post("/runs", runCreationRateLimit, async (req, res, next): Promise<void> => {
   const parsedHeader = CreateRunHeader.safeParse({
     "Idempotency-Key": req.get("Idempotency-Key")?.trim(),
   });
   if (!parsedHeader.success) {
     res.status(400).json({ error: "A non-empty Idempotency-Key header is required." });
+    return;
+  }
+
+  const rawInput =
+    typeof req.body === "object" && req.body !== null
+      ? (req.body as Record<string, unknown>)["input"]
+      : undefined;
+  if (typeof rawInput === "string" && rawInput.length > 20_000) {
+    res.status(413).json({ error: "Input must be 20,000 characters or fewer." });
     return;
   }
 
@@ -58,6 +72,10 @@ router.post("/runs", async (req, res, next): Promise<void> => {
     }
     res.status(201).json(CreateRunResponse.parse(createdRun));
   } catch (error) {
+    if (error instanceof DailyRunLimitError) {
+      res.status(429).json({ error: error.message });
+      return;
+    }
     next(error);
   }
 });
@@ -70,6 +88,61 @@ router.get("/runs/latest", async (_req, res, next): Promise<void> => {
       return;
     }
     res.json(GetLatestRunResponse.parse(result));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/runs/:id/input", async (req, res, next): Promise<void> => {
+  const params = SubmitRunInputParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const rawInput =
+    typeof req.body === "object" && req.body !== null
+      ? (req.body as Record<string, unknown>)["input"]
+      : undefined;
+  if (typeof rawInput === "string" && rawInput.length > 20_000) {
+    res.status(413).json({ error: "Input must be 20,000 characters or fewer." });
+    return;
+  }
+
+  const parsedBody = SubmitRunInputBody.safeParse(req.body);
+  if (!parsedBody.success || parsedBody.data.input.trim().length === 0) {
+    res.status(400).json({ error: "Request body must include non-empty advisory text." });
+    return;
+  }
+
+  try {
+    const resumed = await resumeRunWithInput(
+      params.data.id,
+      parsedBody.data.input,
+    );
+    if (resumed.kind === "not_found") {
+      res.status(404).json({ error: "Run not found." });
+      return;
+    }
+    if (resumed.kind === "not_waiting") {
+      res.status(409).json({ error: "This run is not waiting for advisory input." });
+      return;
+    }
+
+    void runPipeline(resumed.run.id, parsedBody.data.input).catch(
+      (error: unknown) => {
+        req.log.error(
+          { err: error, runId: resumed.run.id },
+          "Resumed pipeline runner failed unexpectedly",
+        );
+      },
+    );
+    const result = await getRunWithSteps(resumed.run.id);
+    if (!result) {
+      res.status(500).json({ error: "The resumed run could not be loaded." });
+      return;
+    }
+    res.status(202).json(GetRunResponse.parse(result));
   } catch (error) {
     next(error);
   }
@@ -107,8 +180,12 @@ router.get("/runs/:id/events", async (req, res, next): Promise<void> => {
       return;
     }
     if (event.type === "step") writeEvent("step", event.step);
+    else if (event.type === "attempt") writeEvent("attempt", event.attempt);
     else writeEvent("run", event.run);
-    if (event.type === "run") {
+    if (
+      event.type === "run" &&
+      (event.run.status === "completed" || event.run.status === "failed")
+    ) {
       res.end();
       cleanup();
     }
@@ -148,8 +225,12 @@ router.get("/runs/:id/events", async (req, res, next): Promise<void> => {
         continue;
       }
       if (event.type === "step") writeEvent("step", event.step);
+      else if (event.type === "attempt") writeEvent("attempt", event.attempt);
       else writeEvent("run", event.run);
-      if (event.type === "run") {
+      if (
+        event.type === "run" &&
+        (event.run.status === "completed" || event.run.status === "failed")
+      ) {
         res.end();
         cleanup();
         return;

@@ -7,6 +7,9 @@
  */
 
 export interface RunInput {
-  /** @minLength 1 */
+  /**
+     * @minLength 1
+     * @maxLength 20000
+     */
   input: string;
 }
