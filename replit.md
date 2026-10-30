@@ -10,6 +10,7 @@ PatchBrief runs an ordered placeholder analysis pipeline and stores each run and
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Required secret for LLM-backed steps: `OPENAI_API_KEY` — OpenAI API key in Replit Tools > Secrets
 
 ## Stack
 
@@ -32,7 +33,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
-PatchBrief accepts a text input, executes five sequential placeholder steps, and exposes persisted run and step results through the API.
+PatchBrief accepts a CVE ID or pasted advisory text, retrieves NVD data when given a CVE ID, extracts advisory details, compares affected version ranges with the tracked stack, and returns a remediation brief through the API.
 
 ## User preferences
 

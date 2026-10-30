@@ -23,6 +23,15 @@ export async function seedStackItems(): Promise<void> {
     .onConflictDoNothing({ target: stackItemsTable.name });
 }
 
+export async function getStackItems(): Promise<
+  Array<{ name: string; version: string }>
+> {
+  return db
+    .select({ name: stackItemsTable.name, version: stackItemsTable.version })
+    .from(stackItemsTable)
+    .orderBy(asc(stackItemsTable.name));
+}
+
 export async function createRun(
   input: string,
   idempotencyKey: string,

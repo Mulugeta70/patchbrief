@@ -1,33 +1,14 @@
-export interface PipelineInput {
-  input: string;
-}
-
-export interface PipelineOutput extends Record<string, unknown> {
-  result: string;
-}
-
-export interface PipelineStep {
-  name: string;
-  run: (input: PipelineInput) => Promise<PipelineOutput>;
-}
-
-const pauseBriefly = () =>
-  new Promise<void>((resolve) => setTimeout(resolve, 120));
-
-function makePlaceholderStep(name: string): PipelineStep {
-  return {
-    name,
-    async run({ input }) {
-      await pauseBriefly();
-      return { result: `${name} placeholder completed for: ${input}` };
-    },
-  };
-}
+import type { PipelineStep } from "./pipelineTypes";
+import { assessStep } from "./steps/assess";
+import { briefStep } from "./steps/brief";
+import { extractStep } from "./steps/extract";
+import { fetchStep } from "./steps/fetch";
+import { planStep } from "./steps/plan";
 
 export const pipelineSteps: PipelineStep[] = [
-  makePlaceholderStep("fetch"),
-  makePlaceholderStep("extract"),
-  makePlaceholderStep("assess"),
-  makePlaceholderStep("plan"),
-  makePlaceholderStep("brief"),
+  fetchStep,
+  extractStep,
+  assessStep,
+  planStep,
+  briefStep,
 ];

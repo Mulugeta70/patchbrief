@@ -64,7 +64,7 @@ catalogs:
       specifier: ^7.3.2
       version: 7.3.7
     zod:
-      specifier: ^3.25.76
+      specifier: 3.25.76
       version: 3.25.76
 
 overrides:
@@ -196,6 +196,12 @@ importers:
       pino-http:
         specifier: ^10.5.0
         version: 10.5.0
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
     devDependencies:
       '@types/cookie-parser':
         specifier: ^1.4.10
@@ -209,6 +215,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.9
+      '@types/semver':
+        specifier: ^7.8.0
+        version: 7.8.0
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
@@ -1521,6 +1530,9 @@ packages:
   '@types/react@19.3.0':
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
+  '@types/semver@7.8.0':
+    resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
+
   '@types/send@1.2.1':
     resolution: {integrity: sha512-arsCikDvlU99zl1g69TcAB3mzZPpxgw0UQnaHeC1Nwb015xp8bknZv5rIfri9xTOcMuaVgvabfIRA7PSZVuZIQ==}
 
@@ -2581,6 +2593,11 @@ packages:
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
+    hasBin: true
+
+  semver@7.8.5:
+    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
+    engines: {node: '>=10'}
     hasBin: true
 
   send@1.2.1:
@@ -4010,6 +4027,8 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
+  '@types/semver@7.8.0': {}
+
   '@types/send@1.2.1':
     dependencies:
       '@types/node': 25.9.9
@@ -4957,6 +4976,8 @@ snapshots:
   secure-json-parse@4.1.1: {}
 
   semver@6.3.1: {}
+
+  semver@7.8.5: {}
 
   send@1.2.1:
     dependencies:
