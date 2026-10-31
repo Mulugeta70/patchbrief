@@ -19,11 +19,13 @@ PatchBrief runs a source-grounded advisory review pipeline and stores runs, step
 - `GITHUB_REPO_URL` supplies the footer's GitHub destination. Set this on the web service and restart/rebuild the frontend.
 - The saved stack is shared app-wide (no accounts). Example items are seeded only once; removing them, even all of them, must survive restarts.
 - Home recent runs belong to the creating browser: persist only its created run IDs in localStorage and fetch those IDs, never the shared recent-runs list. Listing labels must not reveal pasted advisory text. Public replay visits must not add a run to browser history.
+- Stack reads remain public, but all adds/removals require the owner `STACK_EDIT_KEY` bearer key. The UI stores it only in sessionStorage after server acceptance. Failed authentication is rate-limited across unlock and write endpoints. New installed versions require at least two dotted numeric parts; do not silently rewrite pre-existing version data.
+- How it works may show only the explicitly configured `FEATURED_RUN_ID`; without it, show no run trace. Never substitute the global latest run.
 - CVE extraction uses NVD structured fields without an LLM; pasted-text extraction and checklist wording alone may use the LLM. The brief records both paths.
 - CVSS display priority is version 4.0 → 3.1 → 3.0 → 2.0, then Primary before Secondary, then NVD/CNA before other sources. Keep all alternate scores and provider/version labels; missing metadata stays explicitly unknown.
 - NVD's excluded upper version boundary is evidence about affected ranges, not a verified fixed release. Both version sections must remain visible even when NVD data is absent.
 - Saved-run playback derives local frames from persisted steps/attempts only. Playback never reruns the pipeline or fetches data, and recorded node durations are not replaced by animation timings.
-- `PATCHBRIEF_MAX_RUNS_PER_DAY` defaults to 100 (UTC day). After this budget, runs are accepted as degraded with no LLM calls; input-size and per-IP limits still reject requests.
+- `PATCHBRIEF_MAX_RUNS_PER_DAY` defaults to 100 (UTC day). Missing keys and exhausted budgets use normal "Rule-based (no LLM)" processing. A run is degraded only after an attempted LLM call fails; input-size and per-IP limits still reject requests.
 
 ## Stack
 

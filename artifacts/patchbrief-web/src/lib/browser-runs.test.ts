@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BROWSER_RUNS_KEY, readBrowserRunIds, rememberBrowserRun, recentRunTitle } from './browser-runs';
+import { BROWSER_RUNS_KEY, readBrowserRunIds, rememberBrowserRun, recentRunTitle, runTitle } from './browser-runs';
 
 function browserStorage() {
   const data = new Map<string, string>();
@@ -21,6 +21,13 @@ test('browser history is empty for a fresh browser and isolated from other brows
   assert.deepEqual(readBrowserRunIds(a), [id(1)]);
   assert.deepEqual(readBrowserRunIds(b), [id(2)]);
   assert.equal(a.getItem(BROWSER_RUNS_KEY), JSON.stringify([id(1)]), 'Store IDs only, no advisory text');
+});
+
+test('run titles use a generic pasted heading and only an 80-character preview', () => {
+  const input = 'Private pasted advisory '.repeat(10);
+  assert.deepEqual(runTitle(input), { title: 'Pasted advisory', preview: input.slice(0, 80) });
+  assert.deepEqual(runTitle('cve-2024-3094'), { title: 'CVE-2024-3094', preview: null });
+  assert.equal(runTitle('Short text').preview, 'Short text');
 });
 
 test('browser history survives rereads, deduplicates IDs, and retains the latest ten', () => {

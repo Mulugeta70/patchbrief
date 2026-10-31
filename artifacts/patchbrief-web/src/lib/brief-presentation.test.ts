@@ -13,12 +13,12 @@ test("old saved briefs gain source-only version sections and scoped wording with
   ] as Step[];
   const before = JSON.stringify(steps);
   const result = presentSavedBrief("## Severity\nHigh (CVSS 8.2)\n\n## Affected stack items\nNo tracked stack items were confirmed affected.\n\n## Remediation checklist\nNo action needed for the tracked stack items.", steps);
-  assert.match(result, /CVSS \(version not provided\) 8.2 \(NVD; provider not recorded\)/);
+  assert.match(result, /CVSS 8.2 \(version not given, NVD; provider not recorded\)/);
   assert.match(result, /## Affected versions\nNVD has no affected-version data yet/);
   assert.match(result, /## Fixed in/);
   assert.match(result, /None of the 1 items in My stack matched/);
   assert.match(labelSavedText("Team: CVSS 8.2. No action needed for the tracked stack items.", steps),
-    /CVSS \(version not provided\) 8.2 \(NVD; provider not recorded\).*None of the 1 items/);
+    /CVSS 8.2 \(version not given, NVD; provider not recorded\).*None of the 1 items/);
   assert.equal(JSON.stringify(steps), before);
 });
 
@@ -62,4 +62,16 @@ test("affected-version previews show three ranges per product and expand to all 
 test("processing paths display plain words without changing stored path values", () => {
   assert.equal(processingPathLabel("nvd_structured"), "NVD fields, no LLM");
   assert.equal(processingPathLabel("no_action"), "No-match note");
+  assert.equal(processingPathLabel("rule_based_no_llm"), "Rule-based (no LLM)");
+});
+
+test("saved pasted severity is readable and missing-version score labels are idempotent", () => {
+  const steps = [
+    { name: "fetch", output: { advisory: { source: "pasted", cvss: 8.2 } } },
+    { name: "assess", output: { cvss: 8.2, severity: "High" } },
+  ] as Step[];
+  const expected = "High, CVSS 8.2 (version not given, from pasted text)";
+  const result = presentSavedBrief("## Severity\nHigh (CVSS (version not provided) 8.2 (pasted advisory))", steps);
+  assert.ok(result.includes(expected));
+  assert.equal(labelSavedText(expected, steps), expected);
 });

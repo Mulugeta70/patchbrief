@@ -114,8 +114,8 @@ test("Fixed in groups every excluded boundary by product without repeating the q
 test("pasted CVSS scores retain explicit versions and label missing versions honestly", async () => {
   const client = createAdvisoryClient(async () => { throw new Error("No network for pasted text"); });
   const explicit = await client("Advisory. CVSS v3.1 score: 8.2.");
-  assert.equal(formatCvssScore(explicit.cvss_scores![0]!), "CVSS v3.1 8.2 (pasted advisory)");
+  assert.equal(formatCvssScore(explicit.cvss_scores![0]!), "CVSS v3.1 8.2 (from pasted text)");
   const missing = await client("Advisory. CVSS score: 8.2.");
-  assert.equal(formatCvssScore(missing.cvss_scores![0]!), "CVSS (version not provided) 8.2 (pasted advisory)");
+  assert.equal(formatCvssScore(missing.cvss_scores![0]!), "CVSS 8.2 (version not given, from pasted text)");
 });
 

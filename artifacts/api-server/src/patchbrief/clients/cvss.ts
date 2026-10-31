@@ -43,5 +43,7 @@ export function readCvssScores(metrics: unknown, cnaIdentifier?: unknown): CvssS
 }
 
 export function formatCvssScore(score: CvssScore): string {
-  return `CVSS ${score.version ? `v${score.version}` : "(version not provided)"} ${score.score} (${score.source})`;
+  const source = score.source === "pasted advisory" ? "from pasted text" : score.source;
+  return score.version ? `CVSS v${score.version} ${score.score} (${source})`
+    : `CVSS ${score.score} (version not given, ${source})`;
 }

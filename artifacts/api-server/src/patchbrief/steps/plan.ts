@@ -5,6 +5,7 @@ import { advisoryTextForLlm } from "../clients/llmLimits";
 import type { ExtractedAdvisory } from "./extract";
 import { requirePriorOutput, type PipelineStep } from "../pipelineTypes";
 import { errorMessage } from "../retry";
+import { hasLlmKey, NO_LLM_REASON } from "../clients/llmMode";
 
 interface AssessedItem {
   name: string;
@@ -77,26 +78,27 @@ export function createPlanStep(
     async run(context) {
       const assessment = requirePriorOutput<AssessOutput>(context, "assess");
       const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
+      const disabledReason = context.llmDisabledReason ?? (generateText === llmClient && !hasLlmKey() ? NO_LLM_REASON : null);
       if (assessment.affected_items.length === 0) {
         const note = "Nothing to patch from your current list. Add other software you run to My stack and rerun.";
         return context.attempts.runLocal(async () => ({
           output_summary: "Wrote 1 no-match note (no LLM).",
-          wording_path: "no_action",
+          wording_path: disabledReason ? "rule_based_no_llm" : "no_action",
           checklist: [note],
         }));
       }
-      const fallback = (reason: string) => {
+      const fallback = (reason: string, attempted = true) => {
         const checklist = createFallbackChecklist(assessment.affected_items, extracted.fixed_in);
         return {
-          output_summary: `Wrote ${checklist.length} checklist items (rule-based fallback).`,
-          wording_path: "rule_based",
+          output_summary: `Wrote ${checklist.length} checklist items (${attempted ? "rule-based fallback" : "Rule-based (no LLM)"}).`,
+          wording_path: attempted ? "rule_based" : "rule_based_no_llm",
           checklist,
-          fallback_used: true,
-          fallback_reason: reason,
+          fallback_used: attempted,
+          ...(attempted ? { fallback_reason: reason } : { no_llm_reason: reason }),
         };
       };
-      if (context.llmDisabledReason) {
-        return context.attempts.runLocal(async () => fallback(context.llmDisabledReason!));
+      if (disabledReason) {
+        return context.attempts.runLocal(async () => fallback(disabledReason, false));
       }
 
       const prompt = [

@@ -22,3 +22,8 @@ export function recentRunTitle(input: string) {
   const value = input.trim();
   return /^CVE-\d{4}-\d{4,}$/i.test(value) ? value.toUpperCase() : 'Pasted advisory';
 }
+
+export function runTitle(input: string) {
+  const title = recentRunTitle(input);
+  return { title, preview: title === 'Pasted advisory' ? Array.from(input).slice(0, 80).join('') : null };
+}

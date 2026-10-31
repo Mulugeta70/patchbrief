@@ -29,6 +29,7 @@ paths:
     post:
       operationId: addStackItem
       summary: Add an item to the shared stack (maximum 30)
+      security: [{ StackEditKey: [] }]
       requestBody:
         required: true
         content:
@@ -46,10 +47,31 @@ paths:
           description: Invalid name or version
         "409":
           description: Duplicate item or stack is full
+        "401":
+          description: Editing key not accepted
+        "429":
+          description: Too many failed unlock attempts
+        "503":
+          description: Owner editing key is not configured
+  /stack/unlock:
+    post:
+      operationId: unlockStackEditing
+      summary: Validate the owner editing key without storing it on the server
+      security: [{ StackEditKey: [] }]
+      responses:
+        "204":
+          description: Editing key accepted
+        "401":
+          description: Editing key not accepted
+        "429":
+          description: Too many failed unlock attempts
+        "503":
+          description: Owner editing key is not configured
   /stack/{id}:
     delete:
       operationId: deleteStackItem
       summary: Remove a saved stack item
+      security: [{ StackEditKey: [] }]
       parameters:
         - in: path
           name: id
@@ -62,6 +84,12 @@ paths:
           description: Removed
         "404":
           description: Item not found
+        "401":
+          description: Editing key not accepted
+        "429":
+          description: Too many failed unlock attempts
+        "503":
+          description: Owner editing key is not configured
   /health:
     get:
       operationId: getHealth
@@ -273,6 +301,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 components:
+  securitySchemes:
+    StackEditKey:
+      type: http
+      scheme: bearer
+      description: Owner editing key from STACK_EDIT_KEY, sent in the Authorization header.
   schemas:
     StackItemInput:
       type: object
@@ -286,6 +319,7 @@ components:
           type: string
           minLength: 1
           maxLength: 50
+          pattern: '^\d+(?:\.\d+)+$'
     StackItem:
       type: object
       required: [id, name, version]
@@ -302,8 +336,12 @@ components:
       properties:
         status:
           type: string
+        llmEnabled:
+          type: boolean
+          description: Whether an LLM key is configured; never includes the key.
       required:
         - status
+        - llmEnabled
     ApiError:
       type: object
       properties:

@@ -32,12 +32,17 @@ export function labelSavedText(content: string, steps: Step[]) {
       n + (Array.isArray(assessment?.[key]) ? assessment[key].length : 0), 0);
   const note = `None of the ${count} items in My stack matched. This only covers software you have listed.`;
   const scores = savedScores(steps);
-  return content.replace(/No action needed for the tracked stack items\./g, note)
+  let text = content.replace(/No action needed for the tracked stack items\./g, note)
     .replace(/No tracked stack items were confirmed affected\./g, note)
-    .replace(/\bCVSS (\d+(?:\.\d+)?)(?!\d|\.\d)/g, (original, number: string) => {
+    .replace(/\bCVSS (\d+(?:\.\d+)?)(?!\d|\.\d|\s*\()/g, (original, number: string) => {
       const score = scores.find((entry) => entry.score === Number(number));
       return score ? scoreLabel(score) : original;
     });
+  for (const score of scores) {
+    const oldLabel = `CVSS ${score.version ? `v${score.version}` : '(version not provided)'} ${score.score} (${score.source})`;
+    text = text.replaceAll(oldLabel, scoreLabel(score));
+  }
+  return text;
 }
 
 // Older saved runs retain their original evidence. Fill presentation gaps from
@@ -73,6 +78,13 @@ export function presentSavedBrief(content: string, steps: Step[]) {
   }
   if (advisory?.source === 'nvd' && advisory.excluded_upper_bounds?.length) {
     text = replaceSection(text, 'Fixed in', fixedBoundaryLines(advisory.excluded_upper_bounds));
+  }
+  const assessment = steps.find((s) => s.name === 'assess')?.output;
+  if (typeof assessment?.severity === 'string') {
+    const scores = savedScores(steps);
+    const severity = `${assessment.severity}, ${scores[0] ? scoreLabel(scores[0]) : 'CVSS unavailable'}`;
+    text = replaceSection(text, 'Severity', severity + (scores.length > 1
+      ? `\n\nOther CVSS scores: ${scores.slice(1).map(scoreLabel).join('; ')}` : ''));
   }
   // Match legacy wording too, without changing the immutable saved record.
   if (hasNoMatches(steps) || /None of the \d+ items in My stack matched/.test(text)) {

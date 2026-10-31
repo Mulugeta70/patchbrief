@@ -86,6 +86,6 @@ test("extract never turns a worker crash into a fallback", async () => {
   const budgetExtract = createExtractStep(async () => { called = true; throw new Error("Not allowed"); });
   const output = await budgetExtract.run({ ...context, llmDisabledReason: "Daily LLM budget reached" });
   assert.equal(called, false);
-  assert.equal(output.fallback_used, true);
-  assert.equal(output.fallback_reason, "Daily LLM budget reached");
+  assert.equal(output.fallback_used, false);
+  assert.equal(output.no_llm_reason, "Daily LLM budget reached");
 });

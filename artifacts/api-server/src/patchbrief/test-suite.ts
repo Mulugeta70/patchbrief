@@ -26,9 +26,12 @@ try {
     "src/patchbrief/llm-limits.test.ts",
     "src/patchbrief/pipeline-details.test.ts",
     "src/patchbrief/advisory-evidence.test.ts",
+    "src/patchbrief/stack-edit-guard.test.ts",
     "../patchbrief-web/src/lib/replay.test.ts",
     "../patchbrief-web/src/lib/brief-presentation.test.ts",
     "../patchbrief-web/src/lib/browser-runs.test.ts",
+    "../patchbrief-web/src/lib/fault-types.test.ts",
+    "../patchbrief-web/src/lib/stack-edit-session.test.ts",
     "src/patchbrief/worker-integration.test.ts",
   ], {
     stdio: "inherit",

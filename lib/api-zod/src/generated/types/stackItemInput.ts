@@ -15,6 +15,7 @@ export interface StackItemInput {
   /**
      * @minLength 1
      * @maxLength 50
+     * @pattern ^\d+(?:\.\d+)+$
      */
   version: string;
 }

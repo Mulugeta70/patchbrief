@@ -27,10 +27,12 @@ export const addStackItemBodyNameMax = 80;
 export const addStackItemBodyVersionMax = 50;
 
 
+export const addStackItemBodyVersionRegExp = new RegExp('^\\d+(?:\\.\\d+)+$');
+
 
 export const AddStackItemBody = zod.object({
   "name": zod.string().min(1).max(addStackItemBodyNameMax),
-  "version": zod.string().min(1).max(addStackItemBodyVersionMax)
+  "version": zod.string().min(1).max(addStackItemBodyVersionMax).regex(addStackItemBodyVersionRegExp)
 })
 
 export const AddStackItemResponse = zod.object({
@@ -38,6 +40,12 @@ export const AddStackItemResponse = zod.object({
   "name": zod.string(),
   "version": zod.string()
 })
+
+
+/**
+ * @summary Validate the owner editing key without storing it on the server
+ */
+export const UnlockStackEditingResponse = zod.void()
 
 
 /**
@@ -54,7 +62,8 @@ export const DeleteStackItemResponse = zod.void()
  * @summary Health check
  */
 export const GetHealthResponse = zod.object({
-  "status": zod.string()
+  "status": zod.string(),
+  "llmEnabled": zod.boolean().describe('Whether an LLM key is configured; never includes the key.')
 })
 
 
@@ -63,7 +72,8 @@ export const GetHealthResponse = zod.object({
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  "status": zod.string()
+  "status": zod.string(),
+  "llmEnabled": zod.boolean().describe('Whether an LLM key is configured; never includes the key.')
 })
 
 

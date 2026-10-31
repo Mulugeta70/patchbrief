@@ -1,11 +1,12 @@
 import { asc, count, eq, sql } from "drizzle-orm";
 import { db, stackItemsTable, stackStateTable } from "@workspace/db";
+import { isDottedVersion, VERSION_MESSAGE } from "./stackValidation";
 
 const examples = [
-  { name: "node", version: "18" },
+  { name: "node", version: "18.19.1" },
   { name: "express", version: "4.17.1" },
   { name: "lodash", version: "4.17.20" },
-  { name: "postgres", version: "15" },
+  { name: "postgres", version: "15.0" },
 ];
 export const MAX_STACK_ITEMS = 30;
 
@@ -25,6 +26,7 @@ export function listStackItems() {
 }
 
 export async function addStackItem(name: string, version: string) {
+  if (!isDottedVersion(version)) return { error: VERSION_MESSAGE } as const;
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(284719054)`);
     const [existing] = await tx.select().from(stackItemsTable).where(eq(stackItemsTable.name, name));

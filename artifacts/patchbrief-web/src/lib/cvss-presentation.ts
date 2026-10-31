@@ -2,7 +2,9 @@ import type { Step } from '@workspace/api-client-react';
 
 export type DisplayScore = { score: number; version: string | null; source: string };
 export function scoreLabel(score: DisplayScore) {
-  return `CVSS ${score.version ? `v${score.version}` : '(version not provided)'} ${score.score} (${score.source})`;
+  const source = score.source === 'pasted advisory' ? 'from pasted text' : score.source;
+  return score.version ? `CVSS v${score.version} ${score.score} (${source})`
+    : `CVSS ${score.score} (version not given, ${source})`;
 }
 export function savedScores(steps: Step[]): DisplayScore[] {
   const fetched = steps.find((s) => s.name === 'fetch')?.output?.advisory as Record<string, unknown> | undefined;

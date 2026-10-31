@@ -32,7 +32,7 @@ test("CVE extraction uses NVD structured facts without an LLM or inferred fixed 
   assert.deepEqual(result.affected, advisory.affected);
   assert.equal(result.cvss, 7.2);
   assert.equal(result.fixed_in, null);
-  assert.equal(result.output_summary, "Extracted 1 affected products (NVD structured fields, no LLM).");
+  assert.equal(result.output_summary, "Extracted 1 affected product (NVD fields, no LLM).");
   ctx.priorOutputs.fetch = { output_summary: "Fetched", advisory: {
     ...advisory, cvss: null, affected: null, description: null,
   } };
@@ -74,5 +74,5 @@ test("pasted advisory extraction still uses the LLM and its existing fallback", 
   assert.equal(calls, 2);
   assert.equal(output.extraction_path, "rule_based_pasted");
   assert.equal(output.fallback_used, true);
-  assert.match(output.output_summary, /Extracted 1 affected products/);
+  assert.match(output.output_summary, /Extracted 1 affected product\b/);
 });

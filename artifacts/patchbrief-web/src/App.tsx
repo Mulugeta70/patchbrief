@@ -8,6 +8,8 @@ import StackPage from '@/pages/stack';
 import { RecentRuns } from '@/components/recent-runs';
 import { ArchitectureDiagram } from '@/components/architecture-diagram';
 import { BROWSER_RUNS_CHANGED, rememberBrowserRun } from '@/lib/browser-runs';
+import { runTitle } from '@/lib/browser-runs';
+import { faultTypesFor } from '@/lib/fault-types';
 import { ReplayControls, useReplay } from '@/components/replay-controls';
 import { describeApiError } from '@/lib/api-errors';
 import { CvssScores } from '@/components/advisory-evidence';
@@ -16,7 +18,7 @@ import { presentSavedBrief, presentTeamMessage } from '@/lib/brief-presentation'
 import { processingPathLabel } from '@/lib/version-presentation';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import {
-  getGetLatestRunQueryKey, getGetRunQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
+  getGetLatestRunQueryKey, getGetRunQueryKey, getRun, useCreateRun, useHealthCheck, useGetRun, useSubmitRunInput,
   type FaultInput, type RunFault, type RunWithSteps, type Step, type StepAttempt,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -29,12 +31,8 @@ const ORDERED_STEPS = ['fetch', 'extract', 'assess', 'plan', 'brief'] as const;
 type StepKey = typeof ORDERED_STEPS[number];
 const STEP_LABELS: Record<string, string> = { fetch: 'Fetch advisory', extract: 'Extract facts', assess: 'Assess stack', plan: 'Map remediation', brief: 'Write brief' };
 const FAULT_LABELS: Record<string, string> = { timeout: 'Timeout', http_500: 'HTTP 500', malformed_json: 'Malformed JSON', worker_crash: 'Worker crash' };
-const NETWORK_FAULT_STEPS: StepKey[] = ['fetch', 'extract', 'plan'];
 const isTerminal = (status?: string) => status === 'completed' || status === 'failed';
 
-function faultTypesFor(step: StepKey): FaultInput['type'][] {
-  return NETWORK_FAULT_STEPS.includes(step) ? ['timeout', 'http_500', 'malformed_json', 'worker_crash'] : ['worker_crash'];
-}
 function timesText(value: number) { return value === -1 ? 'always' : `${value}x`; }
 function formatTime(value: string | null | undefined) {
   if (!value) return '—';
@@ -64,10 +62,15 @@ function BreakItPanel({ faults, setFaults, slowMode, setSlowMode, input }: {
   const [step, setStep] = useState<StepKey>('fetch');
   const [type, setType] = useState<FaultInput['type']>('timeout');
   const [times, setTimes] = useState<FaultInput['times']>(1);
-  const allowed = faultTypesFor(step);
+  const health = useHealthCheck();
+  const llmEnabled = health.data?.llmEnabled === true;
+  const allowed = faultTypesFor(step, llmEnabled);
+  useEffect(() => {
+    if (!faultTypesFor(step, llmEnabled).includes(type)) setType('worker_crash');
+  }, [step, llmEnabled, type]);
   const changeStep = (next: StepKey) => {
     setStep(next);
-    if (!faultTypesFor(next).includes(type)) setType('worker_crash');
+    if (!faultTypesFor(next, llmEnabled).includes(type)) setType('worker_crash');
   };
   const add = () => {
     if (faults.length >= 20) return;
@@ -78,7 +81,6 @@ function BreakItPanel({ faults, setFaults, slowMode, setSlowMode, input }: {
   return <section className="break-panel" aria-labelledby="break-it-title" data-testid="panel-break-it">
     <div className="break-head">
       <div><h3 id="break-it-title">Break it</h3><p>Optional demo faults, scoped to this run only. Watch retries, fallbacks and worker recovery happen live.</p></div>
-      <span className="eyebrow">02 / Faults</span>
     </div>
     <div className="fault-builder">
       <label><span>Step</span>
@@ -168,7 +170,6 @@ function Home() {
         <form className="form-panel fade-in" onSubmit={submit} data-testid="form-create-run">
           <div className="panel-head">
             <div><h2 className="panel-title">New run</h2><p className="panel-subtitle">One identifier or the full advisory text.</p></div>
-            <span className="eyebrow">01 / Input</span>
           </div>
           <label className="input-label" htmlFor="advisory-input">CVE ID or advisory</label>
           <textarea id="advisory-input" className="input-control advisory-input" value={input} aria-invalid={input.length > MAX_INPUT} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\nor paste the vendor advisory here'} data-testid="input-advisory" />
@@ -200,7 +201,8 @@ function formatDuration(ms: number | null | undefined) {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 function formatSummary(step?: Step) {
-  return step?.outputSummary || step?.error || (step?.status === 'running' ? 'Working through this step.' : 'No summary recorded yet.');
+  return (step?.outputSummary || step?.error || (step?.status === 'running' ? 'Working through this step.' : 'No summary recorded yet.'))
+    .replace(/\b1 affected products\b/g, '1 affected product');
 }
 const attemptKey = (a: StepAttempt) => `${a.stepName}#${a.attempt}`;
 function unionAttempts(base: StepAttempt[] = [], preferred: StepAttempt[] = []) {
@@ -396,6 +398,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
   if (isLoading && !live) return <div className="loading-state" data-testid="status-run-loading"><div className="skeleton" style={{ height: 20, width: '35%', marginBottom: 22 }} /><div className="skeleton" style={{ height: 150, width: '100%' }} /></div>;
   if (error && !live) return <div className="empty-state" data-testid="status-run-error">This run could not be loaded. <button className="nav-link" onClick={onRetry} data-testid="button-retry-run">Retry</button></div>;
   if (!live) return <div className="empty-state">No run data is available.</div>;
+  const heading = runTitle(live.run.input);
   const finalBrief = live.steps.find((step) => step.name === 'brief')?.output;
   const markdown = typeof finalBrief?.markdown === 'string' ? finalBrief.markdown : typeof finalBrief?.brief === 'string' ? finalBrief.brief : '';
   const teamValue = finalBrief?.team_message;
@@ -441,7 +444,8 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
   return <div className="run-content">
     <div className="page-heading">
       <div>
-        <h1>{live.run.input.length > 70 ? `${live.run.input.slice(0, 70)}…` : live.run.input}</h1>
+        <h1>{heading.title}</h1>
+        {heading.preview && <p className="advisory-preview">{heading.preview}</p>}
         <p>{connection === 'replay' ? 'Saved replay of a finished run' : 'Live review trace and evidence summary'}</p>
         <div className="status-line">
           <span className={`live-dot ${statusClass}`} />
@@ -457,10 +461,10 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
       </div>
     </div>
     {live.run.llmDisabledReason && <div className="llm-note" data-testid="text-llm-disabled">
-      <strong>Deterministic mode</strong> The model was not used for this run: {live.run.llmDisabledReason}. This is an accepted degraded run, not an error; rule-based fallbacks produced the output.
+      <strong>Rule-based (no LLM)</strong> The model was not used for this run: {live.run.llmDisabledReason}
     </div>}
     {live.run.status === 'needs_input' && <form className="resume-panel fade-in" onSubmit={submitResume} data-testid="form-resume-run">
-      <div className="panel-head"><div><h2 className="panel-title">Paste the advisory to continue</h2><p className="panel-subtitle">NVD could not provide this CVE record. This resumes the same run at the fetch step.</p></div><span className="eyebrow">Input needed</span></div>
+      <div className="panel-head"><div><h2 className="panel-title">Paste the advisory to continue</h2><p className="panel-subtitle">NVD could not provide this CVE record. This resumes the same run at the fetch step.</p></div></div>
       <label className="input-label" htmlFor="resume-advisory-input">Advisory text</label>
       <textarea id="resume-advisory-input" className="input-control advisory-input" value={resumeText} onChange={(event) => { setResumeText(event.target.value); if (resumeError) setResumeError(''); }} placeholder="Paste the vendor advisory here" data-testid="input-resume-advisory" />
       <div className="resume-footer"><span className="field-hint">{resumeText.length.toLocaleString()} / 20,000 characters</span><button className="submit-button" type="submit" disabled={resumeInput.isPending || !resumeText.trim()} data-testid="button-resume-run">{resumeInput.isPending ? 'Resuming…' : 'Resume this run'}</button></div>
@@ -598,21 +602,23 @@ function RunPage() {
 }
 
 function HowItWorks() {
-  const latest = useGetLatestRun({ query: { queryKey: getGetLatestRunQueryKey(), retry: false } });
-  const latestData = latest.data;
-  const stream = useRunStream(latestData?.run.id || '', latestData);
+  const featuredId = import.meta.env.FEATURED_RUN_ID?.trim() || '';
+  const featured = useGetRun(featuredId, { query: { queryKey: getGetRunQueryKey(featuredId), enabled: !!featuredId, retry: false } });
+  const featuredData = featured.data?.run.id === featuredId ? featured.data : undefined;
+  const stream = useRunStream(featuredId, featuredData);
   return <AppFrame><main className="page-wrap">
     <div className="page-heading"><div><h1>How it works</h1><p>Each run goes through five saved steps. If one fails, the app retries, falls back, or asks for input, and you can replay the run.</p></div></div>
     <ArchitectureDiagram />
     <section className="latest-section">
-      <h2>Latest run trace</h2>
-      {latest.isLoading && <div className="loading-state" data-testid="status-latest-loading"><div className="skeleton" style={{ height: 155 }} /></div>}
-      {latest.isError && <div className="empty-state" data-testid="status-latest-error">No latest run is available right now. <button className="nav-link" onClick={() => void latest.refetch()} data-testid="button-retry-latest">Try again</button></div>}
-      {!latest.isLoading && !latest.isError && !latestData && <div className="empty-state">There are no runs to show yet. Start a review to see its live trace here.</div>}
-      {latestData && <RunView initial={latestData} data={stream.data} isLoading={false} error={false} onRetry={() => void latest.refetch()} showId={false} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} localInterrupted={stream.localInterrupted} />}
+      {!featuredId ? <div className="empty-state">No featured run set yet</div> : <>
+        <h2>Featured run trace</h2>
+        {featured.isLoading && <div className="loading-state" data-testid="status-featured-loading"><div className="skeleton" style={{ height: 155 }} /></div>}
+        {featured.isError && <div className="empty-state" data-testid="status-featured-error">The featured run could not be loaded. <button className="nav-link" onClick={() => void featured.refetch()}>Try again</button></div>}
+        {featuredData && <RunView initial={featuredData} data={stream.data?.run.id === featuredId ? stream.data : null} isLoading={false} error={false} onRetry={() => void featured.refetch()} showId={false} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} localInterrupted={stream.localInterrupted} />}
+      </>}
     </section>
-    {import.meta.env.FEATURED_RUN_ID && <section className="featured-run">
-      <Link href={`/run/${encodeURIComponent(import.meta.env.FEATURED_RUN_ID)}`}>Featured run</Link>
+    {featuredId && <section className="featured-run">
+      <Link href={`/run/${encodeURIComponent(featuredId)}`}>Featured run</Link>
       <p>A run where fetch timed out twice and the server crashed during assess.</p>
     </section>}
   </main></AppFrame>;

@@ -14,6 +14,7 @@ import { publishAttempt, publishRunUpdate, publishStep } from "./events";
 import { withRunLock } from "./leases";
 import type { FaultInput } from "./faults";
 import { seedExampleStack } from "./stackStore";
+import { hasLlmKey, NO_LLM_REASON } from "./clients/llmMode";
 
 export async function seedStackItems(): Promise<void> {
   await seedExampleStack();
@@ -33,6 +34,7 @@ export async function createRun(
   idempotencyKey: string,
   options: { faults?: FaultInput[]; slowMode?: boolean } = {},
   maximumRunsPerDay = configuredDailyRunLimit(),
+  llmConfigured = hasLlmKey(),
 ): Promise<{ run: Run; created: boolean }> {
   const result = await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -62,14 +64,14 @@ export async function createRun(
       .where(gte(runsTable.createdAt, utcDayStart));
 
     const llmDisabledReason = (dailyCount?.total ?? 0) >= maximumRunsPerDay
-      ? `Daily LLM run budget of ${maximumRunsPerDay} reached. Rule-based fallbacks used; no LLM calls made.`
-      : null;
+      ? `Daily LLM run budget of ${maximumRunsPerDay} reached. Rule-based (no LLM); no LLM calls made.`
+      : llmConfigured ? null : NO_LLM_REASON;
 
     const [inserted] = await tx
       .insert(runsTable)
       .values({ input, idempotencyKey, status: "queued",
         slowMode: options.slowMode ?? false, llmDisabledReason,
-        degraded: llmDisabledReason !== null, leaseExpiresAt: sql`now() - interval '1 second'` })
+        degraded: false, leaseExpiresAt: sql`now() - interval '1 second'` })
       .onConflictDoNothing({ target: runsTable.idempotencyKey })
       .returning();
 

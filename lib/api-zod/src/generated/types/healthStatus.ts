@@ -8,4 +8,6 @@
 
 export interface HealthStatus {
   status: string;
+  /** Whether an LLM key is configured; never includes the key. */
+  llmEnabled: boolean;
 }

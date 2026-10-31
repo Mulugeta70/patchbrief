@@ -14,6 +14,10 @@ import { createExtractStep } from "./steps/extract";
 import type { PipelineContext, PipelineOutput } from "./pipelineTypes";
 import app from "../app";
 
+// Fault-boundary tests simulate configuration without using a real credential.
+// Their malformed-JSON faults intercept before any external LLM request.
+process.env.OPENAI_API_KEY ??= "test-only-not-a-credential";
+process.env.STACK_EDIT_KEY = "test-only-stack-owner-key";
 before(seedStackItems);
 after(async () => { await pool.end(); });
 const input = "Lodash versions <= 4.17.20 are affected. Fixed in version 4.17.21. CVSS score: 8.2.";
@@ -65,7 +69,7 @@ test("crashed run recovers once, preserves completed steps, and fences the old w
   } finally { await cleanup(run.id); }
 });
 
-test("daily budget accepts a degraded run and skips every LLM boundary", async () => {
+test("daily budget uses normal no-LLM mode and skips every LLM boundary", async () => {
   const { run, created } = await createRun(input, `budget-${randomUUID()}`, {
     faults: [
       { step: "extract", type: "malformed_json", times: "always" },
@@ -74,7 +78,7 @@ test("daily budget accepts a degraded run and skips every LLM boundary", async (
   }, 0);
   try {
     assert.equal(created, true);
-    assert.equal(run.degraded, true);
+    assert.equal(run.degraded, false);
     assert.match(run.llmDisabledReason!, /budget/);
     const [claimed] = await claimExpiredRuns(run.id);
     await runPipeline(claimed!);
@@ -82,8 +86,28 @@ test("daily budget accepts a degraded run and skips every LLM boundary", async (
     assert.equal(saved.run.status, "completed");
     assert.equal(saved.steps.length, 5);
     assert.equal(saved.faults.every((fault) => fault.injectedCount === 0), true);
-    assert.equal(saved.steps.filter((s) => s.fallbackUsed).length, 2);
-    assert.match(String(saved.steps[4]?.output?.markdown), /extract, plan/);
+    assert.equal(saved.run.degraded, false);
+    assert.equal(saved.steps.filter((s) => s.fallbackUsed).length, 0);
+    assert.match(String(saved.steps[4]?.output?.markdown), /Rule-based \(no LLM\)/);
+  } finally { await cleanup(run.id); }
+});
+
+test("missing LLM key uses rule-based extraction and checklist without failed calls or degradation", async () => {
+  const { run } = await createRun(input, `no-key-${randomUUID()}`, {}, 1_000_000, false);
+  try {
+    assert.equal(run.degraded, false);
+    assert.match(run.llmDisabledReason!, /No LLM key/);
+    const [claimed] = await claimExpiredRuns(run.id);
+    await runPipeline(claimed!);
+    const saved = (await getRunWithSteps(run.id))!;
+    assert.equal(saved.run.status, "completed");
+    assert.equal(saved.run.degraded, false);
+    assert.equal(saved.steps.length, 5);
+    assert.equal(saved.steps.some((step) => step.fallbackUsed), false);
+    assert.equal(saved.attempts.some((attempt) => attempt.status === "failed"), false);
+    assert.equal(saved.steps[1]?.output?.extraction_path, "rule_based_no_llm");
+    assert.equal(saved.steps[3]?.output?.wording_path, "rule_based_no_llm");
+    assert.match(String(saved.steps[4]?.output?.markdown), /High, CVSS 8.2 \(version not given, from pasted text\)/);
   } finally { await cleanup(run.id); }
 });
 
@@ -232,10 +256,22 @@ test("shared stack API persists across clients, validates input, and enforces th
   const createdIds: string[] = [];
   const prefix = `stack-test-${randomUUID().slice(0, 8)}`;
   const post = (name: string, version: string) => fetch(url, { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, version }) });
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-only-stack-owner-key" }, body: JSON.stringify({ name, version }) });
   try {
+    assert.equal((await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "unauthorized", version: "1.2.3" }) })).status, 401);
+    assert.equal((await fetch(`${url}/${randomUUID()}`, { method: "DELETE" })).status, 401);
+    assert.equal((await fetch(`${url}/unlock`, { method: "POST", headers: { Authorization: "Bearer test-only-stack-owner-key" } })).status, 204);
     assert.equal((await post("", "1.2.3")).status, 400);
     assert.equal((await post("bad-range", ">=1.2.3")).status, 400);
+    for (const version of ["18", "15", "1.2-beta", ""]) {
+      const rejected = await post(`${prefix}-invalid`, version);
+      assert.equal(rejected.status, 400);
+      assert.equal((await rejected.json() as { error: string }).error, "Use a full version, like 18.19.1");
+    }
+    const twoPart = await post(`${prefix}-two-part`, "18.19");
+    assert.equal(twoPart.status, 201);
+    createdIds.push((await twoPart.json() as { id: string }).id);
     const first = await post(`${prefix}-item`, "1.2.3");
     assert.equal(first.status, 201);
     const item = await first.json() as { id: string; name: string; version: string };
@@ -256,8 +292,8 @@ test("shared stack API persists across clients, validates input, and enforces th
     }
     const capped = await (await fetch(url)).json() as unknown[];
     assert.equal(capped.length, 30);
-    assert.equal((await fetch(`${url}/${item.id}`, { method: "DELETE" })).status, 204);
-    assert.equal((await fetch(`${url}/${item.id}`, { method: "DELETE" })).status, 404);
+    assert.equal((await fetch(`${url}/${item.id}`, { method: "DELETE", headers: { Authorization: "Bearer test-only-stack-owner-key" } })).status, 204);
+    assert.equal((await fetch(`${url}/${item.id}`, { method: "DELETE", headers: { Authorization: "Bearer test-only-stack-owner-key" } })).status, 404);
     await seedStackItems();
     const afterSeed = await (await fetch(url)).json() as Array<{ id: string }>;
     assert.equal(afterSeed.length, 29, "Seeding must not repopulate removed items");

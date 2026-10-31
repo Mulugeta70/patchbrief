@@ -222,6 +222,80 @@ export const useAddStackItem = <TError = ErrorType<void>,
       return useMutation(getAddStackItemMutationOptions(options));
     }
 
+export const getUnlockStackEditingUrl = () => {
+
+
+
+
+  return `/api/stack/unlock`
+}
+
+/**
+ * @summary Validate the owner editing key without storing it on the server
+ */
+export const unlockStackEditing = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getUnlockStackEditingUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getUnlockStackEditingMutationKey = () => ['unlockStackEditing'] as const;
+
+export const getUnlockStackEditingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unlockStackEditing>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unlockStackEditing>>, TError,void, TContext> => {
+
+const mutationKey = getUnlockStackEditingMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unlockStackEditing>>, void> = () => {
+
+
+          return  unlockStackEditing(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnlockStackEditingMutationResult = NonNullable<Awaited<ReturnType<typeof unlockStackEditing>>>
+
+    export type UnlockStackEditingMutationError = ErrorType<void>
+
+
+    /**
+ * @summary Validate the owner editing key without storing it on the server
+ */
+export const useUnlockStackEditing = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unlockStackEditing>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unlockStackEditing>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getUnlockStackEditingMutationOptions(options));
+    }
+
 export const getDeleteStackItemUrl = (id: string,) => {
 
 

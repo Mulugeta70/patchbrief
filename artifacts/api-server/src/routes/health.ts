@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { HealthCheckResponse } from "@workspace/api-zod";
+import { hasLlmKey } from "../patchbrief/clients/llmMode";
 
 const router: IRouter = Router();
 
 router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
+  const data = HealthCheckResponse.parse({ status: "ok", llmEnabled: hasLlmKey() });
   res.json(data);
 });
 router.get("/health", (_req, res) => {

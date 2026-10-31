@@ -51,12 +51,14 @@ export const briefStep: PipelineStep = {
       const extracted = requirePriorOutput<Record<string, unknown>>(context, "extract");
       const extractionPath = extracted.extraction_path === "nvd_structured"
         ? "NVD fields, no LLM"
+        : extracted.extraction_path === "rule_based_no_llm" ? "Rule-based (no LLM)"
         : extracted.extraction_path === "llm_pasted"
           ? "Pasted advisory text (LLM)"
           : extracted.extraction_path === "rule_based_pasted"
             ? "Pasted advisory text (rule-based fallback)"
             : "Not recorded in this saved run";
       const checklistPath = plan.wording_path === "llm" ? "LLM wording"
+        : plan.wording_path === "rule_based_no_llm" ? "Rule-based (no LLM)"
         : plan.wording_path === "rule_based" ? "Rule-based fallback"
           : plan.wording_path === "no_action" ? "No-match note" : "Not recorded in this saved run";
       const advisory = fetched.advisory;
@@ -98,7 +100,7 @@ export const briefStep: PipelineStep = {
         degradedSection,
         "",
         "## Severity",
-        `${assessment.severity} (${cvssLabel})`,
+        `${assessment.severity}, ${cvssLabel}`,
         "",
         ...(scores.length > 1 ? [`Other CVSS scores: ${scores.slice(1).map(formatCvssScore).join("; ")}`, ""] : []),
         "## Affected versions",
@@ -129,7 +131,7 @@ export const briefStep: PipelineStep = {
                 .join(", ")}`
             : "none matched";
       const teamMessage = [
-        `${advisory.cve_id ?? "Advisory"}: ${assessment.severity} (${cvssLabel}).`,
+        `${advisory.cve_id ?? "Advisory"}: ${assessment.severity}, ${cvssLabel}.`,
         `Affected tracked stack items: ${affectedLabel}.`,
         assessment.affected_items.length === 0 ? noMatchNote
           : `Remediation: ${plan.checklist[0] ?? "Check the vendor advisory."}`,

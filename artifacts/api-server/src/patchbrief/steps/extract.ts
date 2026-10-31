@@ -1,3 +1,4 @@
+import { hasLlmKey, NO_LLM_REASON } from "../clients/llmMode";
 import { z } from "zod/v4";
 import { llmClient, type LlmClient } from "../clients/llmClient";
 import { advisoryTextForLlm } from "../clients/llmLimits";
@@ -240,21 +241,21 @@ function extractFixedVersion(description: string | null): string | null {
   return match?.[1]?.replace(/^v/i, "") ?? null;
 }
 
-function createFallback(advisory: Advisory, reason: string) {
+function createFallback(advisory: Advisory, reason: string, attempted = true) {
   const affected = mergeAffected(
     advisory.affected,
     textDerivedAffected(advisory.description),
   );
   return {
-    output_summary: `Extracted ${affected.length} affected products (pasted text, rule-based fallback).`,
-    extraction_path: "rule_based_pasted",
+    output_summary: `Extracted ${affected.length} affected product${affected.length === 1 ? "" : "s"} (pasted text, ${attempted ? "rule-based fallback" : "Rule-based (no LLM)"}).`,
+    extraction_path: attempted ? "rule_based_pasted" : "rule_based_no_llm",
     cve_id: sourceCveId(advisory),
     summary: advisory.description?.trim() || "No advisory description provided.",
     affected,
     fixed_in: extractFixedVersion(advisory.description),
     cvss: advisory.cvss,
-    fallback_used: true,
-    fallback_reason: reason,
+    fallback_used: attempted,
+    ...(attempted ? { fallback_reason: reason } : { no_llm_reason: reason }),
   };
 }
 
@@ -279,13 +280,14 @@ export function createExtractStep(
           return {
             ...extracted,
             extraction_path: "nvd_structured",
-            output_summary: `Extracted ${extracted.affected.length} affected products (NVD structured fields, no LLM).`,
+            output_summary: `Extracted ${extracted.affected.length} affected product${extracted.affected.length === 1 ? "" : "s"} (NVD fields, no LLM).`,
           };
         });
       }
-      if (context.llmDisabledReason) {
+      const disabledReason = context.llmDisabledReason ?? (generateText === llmClient && !hasLlmKey() ? NO_LLM_REASON : null);
+      if (disabledReason) {
         return context.attempts.runLocal(async () =>
-          createFallback(advisory, context.llmDisabledReason!));
+          createFallback(advisory, disabledReason, false));
       }
       const prompt = [
         "Extract vulnerability facts from the supplied advisory only.",
@@ -338,7 +340,7 @@ export function createExtractStep(
         return createFallback(advisory, reason);
       }
       return {
-        output_summary: `Extracted ${extracted.affected.length} affected products (pasted text, LLM).`,
+        output_summary: `Extracted ${extracted.affected.length} affected product${extracted.affected.length === 1 ? "" : "s"} (pasted text, LLM).`,
         extraction_path: "llm_pasted",
         ...extracted,
       };

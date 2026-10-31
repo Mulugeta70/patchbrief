@@ -5,6 +5,7 @@ export function processingPathLabel(value: string) {
     nvd_structured: 'NVD fields, no LLM', no_action: 'No-match note',
     llm_pasted: 'Pasted text, LLM', rule_based_pasted: 'Pasted text, rule-based fallback',
     llm: 'LLM wording', rule_based: 'Rule-based fallback',
+    rule_based_no_llm: 'Rule-based (no LLM)',
   };
   return labels[value] ?? value.replaceAll('_', ' ');
 }

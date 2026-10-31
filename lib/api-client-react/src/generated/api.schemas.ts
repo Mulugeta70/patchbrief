@@ -14,6 +14,7 @@ export interface StackItemInput {
   /**
      * @minLength 1
      * @maxLength 50
+     * @pattern ^\d+(?:\.\d+)+$
      */
   version: string;
 }
@@ -26,6 +27,8 @@ export interface StackItem {
 
 export interface HealthStatus {
   status: string;
+  /** Whether an LLM key is configured; never includes the key. */
+  llmEnabled: boolean;
 }
 
 export interface ApiError {
