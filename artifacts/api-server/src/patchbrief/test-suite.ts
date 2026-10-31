@@ -28,6 +28,7 @@ try {
     "src/patchbrief/advisory-evidence.test.ts",
     "../patchbrief-web/src/lib/replay.test.ts",
     "../patchbrief-web/src/lib/brief-presentation.test.ts",
+    "../patchbrief-web/src/lib/browser-runs.test.ts",
     "src/patchbrief/worker-integration.test.ts",
   ], {
     stdio: "inherit",

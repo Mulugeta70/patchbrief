@@ -6,6 +6,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import StackPage from '@/pages/stack';
 import { RecentRuns } from '@/components/recent-runs';
+import { ArchitectureDiagram } from '@/components/architecture-diagram';
+import { BROWSER_RUNS_CHANGED, rememberBrowserRun } from '@/lib/browser-runs';
 import { ReplayControls, useReplay } from '@/components/replay-controls';
 import { describeApiError } from '@/lib/api-errors';
 import { CvssScores } from '@/components/advisory-evidence';
@@ -14,7 +16,7 @@ import { presentSavedBrief, presentTeamMessage } from '@/lib/brief-presentation'
 import { processingPathLabel } from '@/lib/version-presentation';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import {
-  getGetLatestRunQueryKey, getGetRunQueryKey, getListRecentRunsQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
+  getGetLatestRunQueryKey, getGetRunQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
   type FaultInput, type RunFault, type RunWithSteps, type Step, type StepAttempt,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -122,7 +124,6 @@ const DRAFT_KEY = 'patchbrief:draft';
 function Home() {
   const [input, setInputState] = useState(() => { try { return sessionStorage.getItem(DRAFT_KEY) || ''; } catch { return ''; } });
   const setInput = (v: string) => { setInputState(v); try { if (v) sessionStorage.setItem(DRAFT_KEY, v); else sessionStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ } };
-  const qc = useQueryClient();
   const [inputError, setInputError] = useState('');
   const [faults, setFaults] = useState<FaultInput[]>([]);
   const [slowMode, setSlowMode] = useState(false);
@@ -142,7 +143,16 @@ function Home() {
     createRun.mutate(
       { data: { input: value, ...(faults.length ? { faults } : {}), ...(slowMode ? { slowMode: true } : {}) } },
       {
-        onSuccess: (result) => { void qc.invalidateQueries({ queryKey: getListRecentRunsQueryKey() }); setInput(''); setLocation(`/run/${encodeURIComponent(result.run.id)}`); },
+        onSuccess: (result) => {
+          try {
+            rememberBrowserRun(window.localStorage, result.run.id);
+            window.dispatchEvent(new Event(BROWSER_RUNS_CHANGED));
+          } catch {
+            window.alert('The run was created, but this browser could not save it in Recent runs. Keep the replay link to return to it.');
+          }
+          setInput('');
+          setLocation(`/run/${encodeURIComponent(result.run.id)}`);
+        },
         onError: (failure) => setInputError(describeApiError(failure, 'The run could not be started. Check the input and try again.')),
       },
     );
@@ -587,37 +597,12 @@ function RunPage() {
   return <AppFrame><main className="page-wrap"><RunView initial={query.data || null} data={stream.data} isLoading={query.isLoading} error={query.isError} onRetry={() => void query.refetch()} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} localInterrupted={stream.localInterrupted} /></main></AppFrame>;
 }
 
-function ArchitectureDiagram() {
-  return <div className="architecture-card">
-    <div className="section-label"><span>Review path</span><span>Request / evidence / assessment</span></div>
-    <svg className="architecture-svg" viewBox="0 0 900 300" role="img" aria-label="Architecture diagram showing browser, API server, runner, Postgres, advisory source, and LLM connected by arrows">
-      <defs><marker id="arrowhead" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7" fill="none" stroke="#728581" strokeWidth="1.2" /></marker></defs>
-      <path className="arch-line" markerEnd="url(#arrowhead)" d="M190 102 H280" /><path className="arch-line" markerEnd="url(#arrowhead)" d="M435 102 H525" />
-      <path className="arch-line" markerEnd="url(#arrowhead)" d="M360 135 V209 H278" /><path className="arch-line" markerEnd="url(#arrowhead)" d="M600 135 V207 H666" />
-      <path className="arch-line dashed" markerEnd="url(#arrowhead)" d="M601 82 C650 35 715 35 750 82" /><path className="arch-line dashed" markerEnd="url(#arrowhead)" d="M750 113 C710 164 650 166 600 125" />
-      <text x="222" y="91" className="arch-sub">REST / SSE</text><text x="467" y="91" className="arch-sub">enqueue</text>
-      <text x="640" y="51" className="arch-sub">retrieve source</text><text x="663" y="154" className="arch-sub">assessment</text>
-      <rect className="arch-box" x="35" y="73" rx="5" width="155" height="62" /><text className="arch-title" x="57" y="101">Browser</text><text className="arch-sub" x="57" y="120">Review UI · live trace</text>
-      <rect className="arch-box primary" x="280" y="73" rx="5" width="155" height="62" /><text className="arch-title" x="302" y="101">API server</text><text className="arch-sub" x="302" y="120">Runs · events · state</text>
-      <rect className="arch-box primary" x="525" y="73" rx="5" width="155" height="62" /><text className="arch-title" x="547" y="101">Runner</text><text className="arch-sub" x="547" y="120">Five ordered steps</text>
-      <rect className="arch-box external" x="710" y="73" rx="5" width="155" height="62" /><text className="arch-title" x="732" y="101">Advisory source</text><text className="arch-sub" x="732" y="120">Public vulnerability data</text>
-      <rect className="arch-box" x="183" y="207" rx="5" width="155" height="62" /><text className="arch-title" x="205" y="235">Postgres</text><text className="arch-sub" x="205" y="254">Runs · step evidence</text>
-      <rect className="arch-box external" x="588" y="207" rx="5" width="155" height="62" /><text className="arch-title" x="610" y="235">LLM</text><text className="arch-sub" x="610" y="254">Pasted text · checklist</text>
-    </svg>
-    <div className="architecture-caption">
-      <div className="caption-item"><strong>01 / Capture</strong><span>The browser submits an identifier or advisory with a fresh idempotency key.</span></div>
-      <div className="caption-item"><strong>02 / Evaluate</strong><span>The runner records each stage as durable evidence and streams updates to the UI.</span></div>
-      <div className="caption-item"><strong>03 / Review</strong><span>Findings and recommendations arrive as a brief alongside the complete run trace.</span></div>
-    </div>
-  </div>;
-}
-
 function HowItWorks() {
   const latest = useGetLatestRun({ query: { queryKey: getGetLatestRunQueryKey(), retry: false } });
   const latestData = latest.data;
   const stream = useRunStream(latestData?.run.id || '', latestData);
   return <AppFrame><main className="page-wrap">
-    <div className="page-heading"><div><div className="eyebrow">System overview</div><h1>From advisory to evidence.</h1><p>A small, observable pipeline keeps each conclusion tied to its source.</p></div></div>
+    <div className="page-heading"><div><h1>How it works</h1><p>Each run goes through five saved steps. If one fails, the app retries, falls back, or asks for input, and you can replay the run.</p></div></div>
     <ArchitectureDiagram />
     <section className="latest-section">
       <h2>Latest run trace</h2>

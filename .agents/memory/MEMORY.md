@@ -1,2 +1,3 @@
 - [Advisory evidence boundaries](advisory-evidence-boundaries.md) — source-only facts and conservative uncertainty in briefs and fallbacks.
 - [Cleanup scope](cleanup-scope.md) — brief and trace cleanup must not change retry, lease or recovery logic.
+- [History visibility](history-visibility.md) — browser-local home history is not authentication; public replay by ID is intentional.

@@ -1,0 +1,22 @@
+.pb-arch { border:1px solid hsl(var(--border)); background:hsl(var(--card)); border-radius:7px; box-shadow:var(--shadow-xs); padding:24px; max-width:100%; overflow:hidden; }
+.pb-arch-svg { display:block; width:100%; height:auto; min-width:0; overflow:visible; }
+.pb-arch-svg.mobile { display:none; max-width:420px; margin:0 auto; }
+.pb-arch-box { fill:#faf9f4; stroke:#d7d1c4; stroke-width:1.2; }
+.pb-arch-box.core { fill:#e9f1ee; stroke:#73988b; }
+.pb-arch-box.ext { fill:#f5f0e5; stroke:#c7ad79; }
+.pb-arch-frame { fill:none; stroke:#b9c7c2; stroke-width:1; }
+.pb-arch-frame-label { font:600 10px var(--app-font-mono); letter-spacing:.06em; text-transform:uppercase; fill:#5f7a72; }
+.pb-arch-title { font:600 13px system-ui, sans-serif; fill:#283436; }
+.pb-arch-sub { font:11px system-ui, sans-serif; fill:#788181; }
+.pb-arch-label { font:11px var(--app-font-mono); fill:#55625f; }
+.pb-arch-line { stroke:#728581; stroke-width:1.4; fill:none; }
+.pb-arch-head { fill:#728581; }
+.pb-arch-note { margin:14px 0 0; font-size:12px; line-height:1.55; color:hsl(var(--muted-foreground)); }
+@media (max-width:640px) {
+  .pb-arch { padding:16px 12px; }
+  .pb-arch-svg.desktop { display:none; }
+  .pb-arch-svg.mobile { display:block; }
+  .pb-arch-title { font-size:14px; }
+  .pb-arch-sub { font-size:11.5px; }
+  .pb-arch-label { font-size:12px; }
+}

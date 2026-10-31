@@ -528,4 +528,6 @@
 .path-summary { display:flex; flex-wrap:wrap; gap:18px; font-size:12px; color:hsl(var(--muted-foreground)); }
 .path-summary strong,.path-note { font:600 10px var(--app-font-mono); text-transform:uppercase; letter-spacing:.06em; color:hsl(var(--primary)); margin-right:6px; }
 .path-note { margin:10px 0 0; }
+.score-help { align-self:flex-start; font-size:11px; text-decoration:underline; text-underline-offset:3px; }
+.score-help-tooltip { max-width:min(300px, calc(100vw - 32px)); font-size:12px; line-height:1.5; white-space:normal; }
 @media (max-width:760px) { .stack-form { grid-template-columns:1fr; } .recent-row { grid-template-columns:1fr; gap:4px; } }

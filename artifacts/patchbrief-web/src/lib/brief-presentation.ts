@@ -1,5 +1,5 @@
 import type { Step } from '@workspace/api-client-react';
-import { savedScores, scoreLabel } from '../components/advisory-evidence';
+import { savedScores, scoreLabel } from './cvss-presentation';
 import { fixedBoundaryLines, NO_MATCH_CHECKLIST } from './version-presentation';
 
 function hasNoMatches(steps: Step[]) {
