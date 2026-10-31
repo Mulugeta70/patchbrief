@@ -1,6 +1,15 @@
 import type { Step } from '@workspace/api-client-react';
 import { savedScores, scoreLabel } from './cvss-presentation';
 import { fixedBoundaryLines, NO_MATCH_CHECKLIST, INCONCLUSIVE_CHECKLIST } from './version-presentation';
+import { nvdUpgradeLines, type BoundaryStackItem, type NvdBoundaryEvidence } from '@workspace/api-zod/nvd-remediation';
+
+function savedUpgradeLines(steps: Step[]) {
+  const assessment = steps.find(s => s.name === 'assess')?.output;
+  const items = Array.isArray(assessment?.affected_items) ? assessment.affected_items
+    : Array.isArray(assessment?.items) ? assessment.items.filter(item => item.status === 'affected') : [];
+  return nvdUpgradeLines(items as BoundaryStackItem[],
+    steps.find(s => s.name === 'fetch')?.output?.advisory as NvdBoundaryEvidence | undefined);
+}
 
 function comparisonIsInconclusive(steps: Step[]) {
   const assessment = steps.find((s) => s.name === 'assess')?.output;
@@ -31,6 +40,9 @@ export function presentTeamMessage(content: string, steps: Step[]) {
     lines[1] = /inconclusive/.test(lines[1] ?? '') ? lines[1]
       : 'Affected tracked stack items: none matched.';
     lines[2] = NO_MATCH_CHECKLIST;
+  } else if (content) {
+    const upgrade = savedUpgradeLines(steps)[0];
+    if (upgrade) lines[2] = `Remediation: ${upgrade}`;
   }
   return lines.join('\n');
 }
@@ -107,6 +119,12 @@ export function presentSavedBrief(content: string, steps: Step[]) {
     const severity = `${assessment.severity}, ${scores[0] ? scoreLabel(scores[0]) : 'CVSS unavailable'}`;
     text = replaceSection(text, 'Severity', severity + (scores.length > 1
       ? `\n\nOther CVSS scores: ${scores.slice(1).map(scoreLabel).join('; ')}` : ''));
+  }
+  const upgrades = savedUpgradeLines(steps);
+  if (upgrades.length) {
+    const existing = sectionBody(text, 'Remediation checklist').split('\n')
+      .filter(line => !upgrades.includes(line.replace(/^[-*]\s+/, ''))).join('\n').trim();
+    text = replaceSection(text, 'Remediation checklist', `${upgrades.map(line => `- ${line}`).join('\n')}${existing ? `\n${existing}` : ''}`);
   }
   // Match legacy wording too, without changing the immutable saved record.
   if (comparisonIsInconclusive(steps)) {

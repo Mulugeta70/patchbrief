@@ -20,6 +20,31 @@ function context(): PipelineContext {
       async markLastAttemptFailed() {} } };
 }
 
+test("NVD boundary upgrade guidance leads the plan and brief in no-LLM, LLM and fallback wording paths", async () => {
+  const expected = "Upgrade php 8.4.20 to 8.4.27 or later. 8.4.27 is the first version outside NVD's affected range, so confirm the fix with the vendor advisory.";
+  for (const mode of ["no-llm", "llm", "fallback"]) {
+    const ctx = context();
+    const php: Advisory = { ...advisory,
+      affected: [{ product: "php", versions: [">=8.4.0 <8.4.27"] }],
+      excluded_upper_bounds: [{ product: "php", version: "8.4.27" }],
+    };
+    ctx.priorOutputs.fetch = { output_summary: "Fetched", advisory: php };
+    ctx.priorOutputs.extract = await createExtractStep().run(ctx);
+    ctx.priorOutputs.assess = await createAssessStep(async () => [{ name: "php", version: "8.4.20" }]).run(ctx);
+    if (mode === "no-llm") ctx.llmDisabledReason = "No key configured";
+    const plan = await createPlanStep(async () => {
+      if (mode === "no-llm") throw new Error("No LLM call expected");
+      if (mode === "fallback") return "invalid JSON";
+      return JSON.stringify({ checklist: ["Confirm the php vendor-fixed release.", "Verify php after patching."] });
+    }).run(ctx);
+    assert.equal((plan.checklist as string[])[0], expected);
+    ctx.priorOutputs.plan = plan;
+    const brief = await briefStep.run(ctx);
+    assert.ok(String(brief.markdown).includes(`## Remediation checklist\n- ${expected}`));
+    assert.equal(String(brief.team_message).split("\n")[2], `Remediation: ${expected}`);
+  }
+});
+
 test("CVE extraction uses NVD structured facts without an LLM or inferred fixed version", async () => {
   const ctx = context();
   ctx.priorOutputs.fetch = { output_summary: "Fetched", advisory };

@@ -645,9 +645,16 @@ importers:
 
   lib/api-zod:
     dependencies:
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+    devDependencies:
+      '@types/semver':
+        specifier: ^7.8.0
+        version: 7.8.0
 
   lib/db:
     dependencies:

@@ -535,6 +535,8 @@
 .stack-unlock label { width:min(280px,100%); }
 .stack-unlock .copy-button { margin-bottom:2px; min-height:40px; }
 .stack-edit-controls { display:flex; align-items:center; gap:16px; margin:20px 0; font-size:12px; color:hsl(var(--muted-foreground)); }
+.raw-output { margin-top:16px; }
+.raw-output > summary { cursor:pointer; font-size:12px; color:hsl(var(--muted-foreground)); padding:8px 0; }
 .draft-controls { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:12px 0; }
 .draft-controls .field-hint { margin:0; }
 .draft-controls .copy-button { flex-shrink:0; }

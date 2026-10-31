@@ -7,6 +7,7 @@ import { requirePriorOutput, type PipelineStep } from "../pipelineTypes";
 import { errorMessage } from "../retry";
 import { hasLlmKey, NO_LLM_REASON } from "../clients/llmMode";
 import { comparisonIsInconclusive, INCONCLUSIVE_CHECKLIST, NO_MATCH_CHECKLIST } from "./briefEvidence";
+import { withNvdUpgradeLines, type NvdBoundaryEvidence } from "@workspace/api-zod/nvd-remediation";
 
 interface AssessedItem {
   name: string;
@@ -79,9 +80,13 @@ export function createPlanStep(
     async run(context) {
       const assessment = requirePriorOutput<AssessOutput>(context, "assess");
       const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
+      const advisory = (context.priorOutputs.fetch as { advisory?: NvdBoundaryEvidence } | undefined)?.advisory;
       const inconclusive = comparisonIsInconclusive(extracted, assessment);
-      const withUncertainty = (checklist: string[]) => inconclusive
-        ? [...checklist.filter((item) => !/nothing to patch/i.test(item)), INCONCLUSIVE_CHECKLIST] : checklist;
+      const withUncertainty = (checklist: string[]) => {
+        const items = withNvdUpgradeLines(checklist, assessment.affected_items, advisory);
+        return inconclusive
+          ? [...items.filter((item) => !/nothing to patch/i.test(item)), INCONCLUSIVE_CHECKLIST] : items;
+      };
       const disabledReason = context.llmDisabledReason ?? (generateText === llmClient && !hasLlmKey() ? NO_LLM_REASON : null);
       if (assessment.affected_items.length === 0) {
         const note = inconclusive ? INCONCLUSIVE_CHECKLIST : NO_MATCH_CHECKLIST;

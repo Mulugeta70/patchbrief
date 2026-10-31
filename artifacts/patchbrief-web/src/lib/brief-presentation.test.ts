@@ -2,6 +2,46 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Step } from "@workspace/api-client-react";
 import { presentSavedBrief, labelSavedText, presentTeamMessage } from "./brief-presentation";
+import { nvdUpgradeLines, withNvdUpgradeLines } from "@workspace/api-zod/nvd-remediation";
+
+const phpRanges = [">=8.2.0 <8.2.35", ">=8.4.0 <8.4.27", ">=8.5.0 <8.5.12"];
+const phpAdvisory = {
+  source: "nvd",
+  affected: [{ product: "php", versions: phpRanges }],
+  excluded_upper_bounds: [
+    { product: "php", version: "8.2.35" }, { product: "php", version: "8.5.12" },
+    { product: "php", version: "8.4.27" }, { product: "other", version: "8.4.21" },
+  ],
+};
+const phpItem = { name: "php", version: "8.4.20", matchedProduct: "php", affectedRanges: phpRanges };
+const phpUpgrade = "Upgrade php 8.4.20 to 8.4.27 or later. 8.4.27 is the first version outside NVD's affected range, so confirm the fix with the vendor advisory.";
+
+test("NVD checklist selects the boundary for the installed release branch, not another product or release line", () => {
+  assert.deepEqual(nvdUpgradeLines([phpItem], phpAdvisory), [phpUpgrade]);
+  const steps = [
+    { name: "fetch", output: { advisory: phpAdvisory } },
+    { name: "extract", output: { affected: phpAdvisory.affected } },
+    { name: "assess", output: { affected_items: [phpItem], undetermined_items: [] } },
+  ] as unknown as Step[];
+  const content = "## Remediation checklist\n- Confirm the vendor-fixed release for php.\n\n## References\n- https://php.example";
+  const result = presentSavedBrief(content, steps);
+  assert.ok(result.includes(`## Remediation checklist\n- ${phpUpgrade}`));
+  assert.equal(presentSavedBrief(result, steps), result);
+  assert.equal(presentTeamMessage("Advisory\nAffected: php\nOld action", steps).split("\n")[2], `Remediation: ${phpUpgrade}`);
+});
+
+test("checklist keeps its existing wording without a usable NVD boundary and never promotes an inclusive or still-affected endpoint", () => {
+  const original = ["Confirm the vendor-fixed release for php."];
+  for (const advisory of [
+    { ...phpAdvisory, source: "pasted" },
+    { ...phpAdvisory, excluded_upper_bounds: [] },
+    { ...phpAdvisory, excluded_upper_bounds: [{ product: "php", version: "8.5.12" }] },
+  ]) assert.deepEqual(withNvdUpgradeLines(original, [phpItem], advisory), original);
+  assert.deepEqual(nvdUpgradeLines([{ ...phpItem, affectedRanges: ["<=8.4.27"] }], phpAdvisory), []);
+  assert.deepEqual(nvdUpgradeLines([phpItem], {
+    ...phpAdvisory, affected: [{ product: "php", versions: [">=8.4.0 <8.4.30"] }],
+  }), []);
+});
 import { fixedBoundaryLines, parseAffectedRanges, visibleRanges, NO_MATCH_CHECKLIST, INCONCLUSIVE_CHECKLIST, processingPathLabel } from "./version-presentation";
 
 test("old saved briefs gain source-only version sections and scoped wording without modifying saved rows", () => {

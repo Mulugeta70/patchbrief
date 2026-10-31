@@ -5,9 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./run-input": "./src/run-input.ts"
+    "./run-input": "./src/run-input.ts",
+    "./nvd-remediation": "./src/nvd-remediation.ts"
   },
   "dependencies": {
+    "semver": "^7.8.5",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.8.0"
   }
 }

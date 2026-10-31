@@ -269,7 +269,7 @@ function AttemptHistory({ attempts }: { attempts: StepAttempt[] }) {
   </ol>;
 }
 
-function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRemainingMs, localInterrupted }: { data: RunData; onSelect: (step: Step) => void; selectedSeq: number | null; connection: string; retrying: AttemptEvent | null; retryRemainingMs: number; localInterrupted: string[] }) {
+export function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRemainingMs, localInterrupted }: { data: RunData; onSelect: (step: Step) => void; selectedSeq: number | null; connection: string; retrying: AttemptEvent | null; retryRemainingMs: number; localInterrupted: string[] }) {
   const steps: Step[] = ORDERED_STEPS.map((name, index) => data.steps.find((step) => step.name === name) || ({
     id: `waiting-${name}`, runId: data.run.id, seq: index + 1, name, status: 'pending',
     attempt: 0, startedAt: null, durationMs: null, output: null, outputSummary: null, error: null,
@@ -343,11 +343,14 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
       return <div className="step-detail fade-in" data-testid="detail-selected-step">
         <div className="detail-head"><span>{STEP_LABELS[step.name] || step.name}{interrupt !== 'none' && <span className={`interrupt-pill ${interrupt}`}>{interrupt === 'recovered' ? 'interrupted, recovered' : 'interrupted'}</span>}</span><span className="node-status">{statusText(normalizedStatus(step))} · attempt {step.attempt || '—'} · {formatDuration(step.durationMs)}</span></div>
         <p className="detail-body">{step.outputSummary || 'No step summary is available yet.'}</p>
-        {pathOf(step) && <p className="path-note" data-testid={`text-path-${step.name}`}>Path used: {pathOf(step)}</p>}
-        {step.output && <pre className="detail-body">{JSON.stringify(step.output, null, 2)}</pre>}
-        {step.error && <div className="detail-error"><strong>Error</strong><br />{step.error}</div>}
         <div className="detail-sub">Attempt history</div>
         <AttemptHistory attempts={attemptsFor(step.name)} />
+        {pathOf(step) && <p className="path-note" data-testid={`text-path-${step.name}`}>Path used: {pathOf(step)}</p>}
+        {step.error && <div className="detail-error"><strong>Error</strong><br />{step.error}</div>}
+        {step.output && <details key={step.id} className="raw-output">
+          <summary>Show raw output</summary>
+          <pre className="detail-body">{JSON.stringify(step.output, null, 2)}</pre>
+        </details>}
       </div>;
     })()}
   </div>;
