@@ -1,5 +1,6 @@
 import type { StepAttemptReporter } from "../pipelineTypes";
 import { injectBoundaryFault } from "../faults";
+import { DEFAULT_LLM_MODEL, LLM_MAX_TOKENS, LLM_PROMPT_MAX_CHARS } from "./llmLimits";
 import {
   HttpRequestError,
   parseRetryAfterMs,
@@ -53,9 +54,10 @@ export function createLlmClient(fetcher: typeof fetch = fetch): LlmClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: process.env.LLM_MODEL?.trim() || DEFAULT_LLM_MODEL,
+          max_tokens: LLM_MAX_TOKENS,
           temperature: 0,
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: prompt.slice(0, LLM_PROMPT_MAX_CHARS) }],
         }),
         signal: AbortSignal.timeout(30_000),
       });

@@ -37,7 +37,7 @@ function Header() {
   return <header className="topbar">
     <Link href="/" className="brand" data-testid="link-home"><span>PatchBrief</span></Link>
     <nav className="nav-links" aria-label="Primary navigation">
-      <Link href="/" className={`nav-link ${location === '/' ? 'active' : ''}`} data-testid="link-new-review">New review</Link>
+      <Link href="/" className={`nav-link ${location === '/' ? 'active' : ''}`} data-testid="link-new-review">New run</Link>
       <Link href="/how-it-works" className={`nav-link ${location === '/how-it-works' ? 'active' : ''}`} data-testid="link-how-it-works">How it works</Link>
     </nav>
   </header>;
@@ -141,18 +141,12 @@ function Home() {
     <main className="page-wrap">
       <div className="home-grid">
         <section className="fade-in">
-          <div className="eyebrow">Evidence before conclusions</div>
-          <h1 className="hero-title">Know what a vulnerability means for your stack.</h1>
-          <p className="hero-copy">Give PatchBrief a CVE or an advisory. It checks the evidence, compares it with your tracked components, and leaves a reviewable trail from source to recommendation.</p>
-          <div className="proof-row">
-            <div><strong>Source-led</strong>Evidence is kept close to each finding.</div>
-            <div><strong>Traceable</strong>Every assessment step is visible.</div>
-            <div><strong>Recoverable</strong>Every attempt, crash and retry is recorded.</div>
-          </div>
+          <h1 className="hero-title">Paste a CVE. Get a triage brief. See every step.</h1>
+          <p className="hero-copy">Checks an advisory against the software I run, and shows how each step went.</p>
         </section>
         <form className="form-panel fade-in" onSubmit={submit} data-testid="form-create-run">
           <div className="panel-head">
-            <div><h2 className="panel-title">Start a vulnerability review</h2><p className="panel-subtitle">One identifier or the full advisory text.</p></div>
+            <div><h2 className="panel-title">New run</h2><p className="panel-subtitle">One identifier or the full advisory text.</p></div>
             <span className="eyebrow">01 / Input</span>
           </div>
           <label className="input-label" htmlFor="advisory-input">CVE ID or advisory</label>
@@ -167,7 +161,6 @@ function Home() {
           {createRun.isPending && <p className="field-hint" aria-live="polite">Creating a fresh run. This may take a moment.</p>}
         </form>
       </div>
-      <div className="footer-note"><span>PATCHBRIEF / EVIDENCE REVIEW</span><span>Assess. Verify. Track.</span></div>
     </main>
   </AppFrame>;
 }
@@ -620,7 +613,10 @@ function HowItWorks() {
       {!latest.isLoading && !latest.isError && !latestData && <div className="empty-state">There are no runs to show yet. Start a review to see its live trace here.</div>}
       {latestData && <RunView initial={latestData} data={stream.data} isLoading={false} error={false} onRetry={() => void latest.refetch()} showId={false} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} localInterrupted={stream.localInterrupted} />}
     </section>
-    <div className="footer-note"><span>PATCHBRIEF / ARCHITECTURE</span><span>Every step leaves a record.</span></div>
+    {import.meta.env.FEATURED_RUN_ID && <section className="featured-run">
+      <Link href={`/run/${encodeURIComponent(import.meta.env.FEATURED_RUN_ID)}`}>Featured run</Link>
+      <p>A run where fetch timed out twice and the server crashed during assess.</p>
+    </section>}
   </main></AppFrame>;
 }
 
@@ -639,7 +635,12 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 function App() {
   return <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+        <Router />
+        <footer className="site-footer">
+          {import.meta.env.GITHUB_REPO_URL && <a href={import.meta.env.GITHUB_REPO_URL} target="_blank" rel="noreferrer">GitHub</a>}
+        </footer>
+      </WouterRouter>
       <Toaster />
     </TooltipProvider>
   </QueryClientProvider>;

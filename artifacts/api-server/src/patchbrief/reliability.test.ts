@@ -73,7 +73,7 @@ test("transient 429 retries and honors Retry-After", async () => {
   ]);
 });
 
-test("permanent HTTP errors fail without retrying", async () => {
+test("HTTP 404 gets exactly one attempt", async () => {
   const { hooks, events } = createHooks();
   const missing = new HttpRequestError(404, "not found");
   let calls = 0;
@@ -91,6 +91,43 @@ test("permanent HTTP errors fail without retrying", async () => {
   );
   assert.equal(calls, 1);
   assert.deepEqual(events.map((event) => event.type), ["started", "failed"]);
+});
+
+test("HTTP 503 fails twice then succeeds with three attempts and growing delays", async () => {
+  const { hooks, events } = createHooks();
+  const delays: number[] = [];
+  let calls = 0;
+  const result = await retryTransient(async () => {
+    if (++calls < 3) throw new HttpRequestError(503, "temporarily unavailable");
+    return "saved result";
+  }, hooks, { random: () => 0.5, sleep: async (ms) => { delays.push(ms); } });
+  assert.equal(result, "saved result");
+  assert.equal(calls, 3);
+  assert.deepEqual(delays, [300, 600]);
+  assert.equal(events.filter((e) => e.type === "started").length, 3);
+  assert.equal(events.filter((e) => e.type === "failed").length, 2);
+  assert.equal(events.filter((e) => e.type === "succeeded").length, 1);
+});
+
+test("a step exceeding its timeout is retried", async () => {
+  const { hooks, events } = createHooks();
+  let calls = 0;
+  const result = await retryTransient(async () => {
+    if (++calls === 1) {
+      const signal = AbortSignal.timeout(5);
+      await new Promise<void>((_resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Timeout signal did not fire")), 200);
+        signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(signal.reason);
+        }, { once: true });
+      });
+    }
+    return "ok";
+  }, hooks, { sleep: async () => {} });
+  assert.equal(result, "ok");
+  assert.equal(calls, 2);
+  assert.equal(events.filter((e) => e.type === "started").length, 2);
 });
 
 test("transient failures stop after three attempts", async () => {

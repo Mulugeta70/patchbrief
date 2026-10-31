@@ -6,13 +6,17 @@ PatchBrief runs a source-grounded advisory review pipeline and stores runs, step
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (managed `PORT`)
 - `pnpm --filter @workspace/api-server run test` — retry, validation, and client-boundary unit tests
-- `pnpm --filter @workspace/api-server run test:integration` — development DB recovery/budget tests; run with API server stopped to avoid worker races. Creates and cleans up its own runs.
+- `npm test` — unit, HTTP idempotency, and database recovery tests. Creates a disposable development DB schema, isolates all test connections from live workers, then drops it. No API shutdown or external LLM/NVD access required.
+- `pnpm --filter @workspace/api-server run test:integration` — lower-level integration entry point; prefer root `npm test` for safe database isolation.
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
 - Required secret for LLM-backed steps: `OPENAI_API_KEY` — OpenAI API key in Replit Tools > Secrets
+- `LLM_MODEL` defaults to `gpt-4.1-nano`. All LLM calls cap output at 1,024 tokens and total prompt text at 16,000 characters; advisory excerpts are capped at 8,000 characters. Full source evidence remains stored and used for validation/fallback.
+- `FEATURED_RUN_ID` optionally adds the featured replay link under `/how-it-works`'s live trace. Set this on the web service and restart/rebuild the frontend.
+- `GITHUB_REPO_URL` supplies the footer's GitHub destination. Set this on the web service and restart/rebuild the frontend.
 - `PATCHBRIEF_MAX_RUNS_PER_DAY` defaults to 100 (UTC day). After this budget, runs are accepted as degraded with no LLM calls; input-size and per-IP limits still reject requests.
 
 ## Stack

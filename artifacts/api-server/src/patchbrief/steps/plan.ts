@@ -1,6 +1,7 @@
 import { isWorkerStop } from "../workerErrors";
 import { z } from "zod/v4";
 import { llmClient, type LlmClient } from "../clients/llmClient";
+import { advisoryTextForLlm } from "../clients/llmLimits";
 import type { ExtractedAdvisory } from "./extract";
 import { requirePriorOutput, type PipelineStep } from "../pipelineTypes";
 import { errorMessage } from "../retry";
@@ -101,8 +102,7 @@ export function createPlanStep(
         "Do not invent fixed versions. Mention a target version only if it appears in fixed_in; otherwise tell the team to verify the vendor's fixed release.",
         "Return only JSON in this shape: {\"checklist\": [\"...\", \"...\"]}. Use 2 to 4 concise checklist items.",
         `Affected stack items: ${JSON.stringify(assessment.affected_items)}`,
-        `Advisory fixed_in: ${JSON.stringify(extracted.fixed_in)}`,
-        `Advisory CVE and summary: ${JSON.stringify({ cve_id: extracted.cve_id, summary: extracted.summary })}`,
+        `Advisory facts (limited excerpt): ${advisoryTextForLlm({ fixed_in: extracted.fixed_in, cve_id: extracted.cve_id, summary: extracted.summary })}`,
       ].join("\n");
 
       try {

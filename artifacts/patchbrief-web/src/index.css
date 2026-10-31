@@ -467,6 +467,10 @@
 .detail-sub { margin-top:16px; font:600 10px var(--app-font-mono); text-transform:uppercase; letter-spacing:.1em; color:hsl(var(--muted-foreground)); }
 .attempt-empty { margin-top:8px; font-size:12px; color:hsl(var(--muted-foreground)); }
 .attempt-list { list-style:none; padding:0; margin:8px 0 0; border-left:1px solid hsl(var(--border)); }
+.site-footer { max-width:1240px; margin:24px auto; padding:0 28px; font-size:13px; }
+.site-footer a, .featured-run a { text-decoration:underline; text-underline-offset:3px; }
+.featured-run { margin-top:24px; font-size:14px; }
+.featured-run p { margin-top:8px; color:hsl(var(--muted-foreground)); }
 .attempt-row { position:relative; padding:7px 0 9px 16px; }
 .attempt-row::before { content:""; position:absolute; left:-4px; top:12px; width:7px; height:7px; border-radius:50%; background:#a7aaa4; }
 .attempt-row.completed::before { background:#4b8b62; }

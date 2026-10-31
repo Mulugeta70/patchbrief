@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { llmClient, type LlmClient } from "../clients/llmClient";
+import { advisoryTextForLlm } from "../clients/llmLimits";
 import type { Advisory, AdvisoryAffectedProduct } from "../clients/advisoryClient";
 import { type PipelineStep, requirePriorOutput } from "../pipelineTypes";
 import { errorMessage } from "../retry";
@@ -278,7 +279,7 @@ export function createExtractStep(
         "Use null for missing cve_id, fixed_in, and cvss. Use an empty affected array if the advisory does not identify affected products.",
         "Represent each affected version as a valid semver version or semver range; do not paraphrase ranges.",
         "The summary must be supported directly by the advisory description. If there is no description, use: No advisory description provided.",
-        `Advisory: ${JSON.stringify(advisory)}`,
+        `Advisory (limited excerpt; missing facts must remain null): ${advisoryTextForLlm(advisory)}`,
       ].join("\n");
 
       let raw: string;

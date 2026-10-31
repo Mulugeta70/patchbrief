@@ -28,6 +28,10 @@ if (!basePath) {
 }
 
 export default defineConfig({
+  define: {
+    'import.meta.env.FEATURED_RUN_ID': JSON.stringify(process.env.FEATURED_RUN_ID || ''),
+    'import.meta.env.GITHUB_REPO_URL': JSON.stringify(process.env.GITHUB_REPO_URL || ''),
+  },
   base: basePath,
   plugins: [
     react(),
