@@ -19,6 +19,8 @@ PatchBrief runs a source-grounded advisory review pipeline and stores runs, step
 - `GITHUB_REPO_URL` supplies the footer's GitHub destination. Set this on the web service and restart/rebuild the frontend.
 - The saved stack is shared app-wide (no accounts). Example items are seeded only once; removing them, even all of them, must survive restarts.
 - CVE extraction uses NVD structured fields without an LLM; pasted-text extraction and checklist wording alone may use the LLM. The brief records both paths.
+- CVSS display priority is version 4.0 → 3.1 → 3.0 → 2.0, then Primary before Secondary, then NVD/CNA before other sources. Keep all alternate scores and provider/version labels; missing metadata stays explicitly unknown.
+- NVD's excluded upper version boundary is evidence about affected ranges, not a verified fixed release. Both version sections must remain visible even when NVD data is absent.
 - Saved-run playback derives local frames from persisted steps/attempts only. Playback never reruns the pipeline or fetches data, and recorded node durations are not replaced by animation timings.
 - `PATCHBRIEF_MAX_RUNS_PER_DAY` defaults to 100 (UTC day). After this budget, runs are accepted as degraded with no LLM calls; input-size and per-IP limits still reject requests.
 

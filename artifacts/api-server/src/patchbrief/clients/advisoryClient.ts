@@ -1,4 +1,5 @@
 import { injectBoundaryFault } from "../faults";
+import { readCvssScores, type CvssScore } from "./cvss";
 import type { StepAttemptReporter } from "../pipelineTypes";
 import {
   HttpRequestError,
@@ -17,12 +18,15 @@ export interface Advisory {
   cve_id: string | null;
   description: string | null;
   cvss: number | null;
+  cvss_scores?: CvssScore[];
+  excluded_upper_bounds?: Array<{ product: string; version: string }>;
   references: string[] | null;
   published: string | null;
   affected: AdvisoryAffectedProduct[] | null;
 }
 
 interface NvdCve {
+  sourceIdentifier?: unknown;
   id?: unknown;
   descriptions?: unknown;
   metrics?: unknown;
@@ -51,29 +55,6 @@ function readDescription(value: unknown): string | null {
   const english = entries.find((entry) => entry["lang"] === "en");
   const selected = english ?? entries[0];
   return typeof selected?.["value"] === "string" ? selected["value"] : null;
-}
-
-function readCvss(value: unknown): number | null {
-  if (!isRecord(value)) return null;
-  const metricOrder = [
-    "cvssMetricV40",
-    "cvssMetricV31",
-    "cvssMetricV30",
-    "cvssMetricV2",
-  ];
-
-  for (const key of metricOrder) {
-    const metricList = value[key];
-    if (!Array.isArray(metricList)) continue;
-    for (const metric of metricList) {
-      if (!isRecord(metric)) continue;
-      const data = metric["cvssData"];
-      if (!isRecord(data)) continue;
-      const score = data["baseScore"];
-      if (typeof score === "number" && Number.isFinite(score)) return score;
-    }
-  }
-  return null;
 }
 
 function readExplicitCvss(description: string): number | null {
@@ -161,6 +142,26 @@ function readAffectedProducts(value: unknown): AdvisoryAffectedProduct[] | null 
   }));
 }
 
+function readExcludedUpperBounds(value: unknown): Array<{ product: string; version: string }> {
+  const bounds = new Map<string, { product: string; version: string }>();
+  function visit(node: unknown): void {
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (!isRecord(node)) return;
+    if (Array.isArray(node.cpeMatch)) for (const match of node.cpeMatch) {
+      if (!isRecord(match) || match.vulnerable !== true ||
+        typeof match.criteria !== "string" || typeof match.versionEndExcluding !== "string") continue;
+      const parts = match.criteria.split(":");
+      const product = parts[4]?.replace(/_/g, "-");
+      if (parts[0] !== "cpe" || parts[1] !== "2.3" || !product || !match.versionEndExcluding.trim()) continue;
+      const version = match.versionEndExcluding;
+      bounds.set(`${product}\0${version}`, { product, version });
+    }
+    visit(node.nodes); visit(node.children);
+  }
+  visit(value);
+  return [...bounds.values()];
+}
+
 async function retryWithoutReporter<T>(operation: () => Promise<T>): Promise<T> {
   let attempt = 0;
   return retryTransient(operation, {
@@ -181,11 +182,17 @@ export function createAdvisoryClient(fetcher: typeof fetch = fetch) {
   ): Promise<Advisory> {
     const trimmed = input.trim();
     if (!CVE_ID_PATTERN.test(trimmed)) {
+      const score = readExplicitCvss(trimmed);
+      const version = trimmed.match(/\bCVSS\s+v?([234]\.\d)\b/i)?.[1] ?? null;
       const advisory: Advisory = {
         source: "pasted",
         cve_id: null,
         description: trimmed || null,
-        cvss: readExplicitCvss(trimmed),
+        cvss: score,
+        cvss_scores: score === null ? [] : [{
+          score, version, source: "pasted advisory", source_identifier: null, type: null,
+        }],
+        excluded_upper_bounds: [],
         references: null,
         published: null,
         affected: null,
@@ -222,11 +229,14 @@ export function createAdvisoryClient(fetcher: typeof fetch = fetch) {
         );
       }
 
+      const scores = readCvssScores(cve.metrics, cve.sourceIdentifier);
       return {
         source: "nvd",
         cve_id: typeof cve.id === "string" ? cve.id : cveId,
         description: readDescription(cve.descriptions),
-        cvss: readCvss(cve.metrics),
+        cvss: scores[0]?.score ?? null,
+        cvss_scores: scores,
+        excluded_upper_bounds: readExcludedUpperBounds(cve.configurations),
         references: readReferences(cve.references),
         published: typeof cve.published === "string" ? cve.published : null,
         affected: readAffectedProducts(cve.configurations),

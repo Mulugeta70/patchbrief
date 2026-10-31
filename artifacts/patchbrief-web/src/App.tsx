@@ -8,6 +8,9 @@ import StackPage from '@/pages/stack';
 import { RecentRuns } from '@/components/recent-runs';
 import { ReplayControls, useReplay } from '@/components/replay-controls';
 import { describeApiError } from '@/lib/api-errors';
+import { CvssScores } from '@/components/advisory-evidence';
+import { MarkdownBrief } from '@/components/markdown-brief';
+import { presentSavedBrief, labelSavedText } from '@/lib/brief-presentation';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import {
   getGetLatestRunQueryKey, getGetRunQueryKey, getListRecentRunsQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
@@ -347,25 +350,6 @@ function PathSummary({ steps }: { steps: Step[] }) {
   </div>;
 }
 
-function MarkdownBrief({ content }: { content: string }) {
-  const blocks = useMemo(() => content.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean), [content]);
-  if (!content.trim()) return <div className="empty-state">The final brief will appear here when the run completes.</div>;
-  return <div className="brief-content" data-testid="content-final-brief">
-    {blocks.map((block, index) => {
-      const lines = block.split('\n');
-      if (lines.every((line) => /^\s*[-*]\s+/.test(line))) return <ul key={index}>{lines.map((line, item) => <li key={item}>{line.replace(/^\s*[-*]\s+/, '')}</li>)}</ul>;
-      const heading = lines[0].match(/^(#{1,3})\s+(.*)$/);
-      if (heading && lines.length === 1) {
-        const text = heading[2];
-        if (heading[1].length === 1) return <h1 key={index}>{text}</h1>;
-        if (heading[1].length === 2) return <h2 key={index}>{text}</h2>;
-        return <h3 key={index}>{text}</h3>;
-      }
-      return <p key={index}>{lines.map((line, item) => <span key={item}>{item > 0 && <br />}{line.replace(/^#{1,3}\s+/, '')}</span>)}</p>;
-    })}
-  </div>;
-}
-
 function FaultsPanel({ faults }: { faults: RunFault[] }) {
   if (!faults.length) return null;
   return <section className="faults-card" data-testid="panel-run-faults">
@@ -404,7 +388,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
   const finalBrief = live.steps.find((step) => step.name === 'brief')?.output;
   const markdown = typeof finalBrief?.markdown === 'string' ? finalBrief.markdown : typeof finalBrief?.brief === 'string' ? finalBrief.brief : '';
   const teamValue = finalBrief?.team_message;
-  const teamMessage = typeof teamValue === 'string' ? teamValue : Array.isArray(teamValue) ? teamValue.filter((line): line is string => typeof line === 'string').join('\n') : '';
+  const teamMessage = labelSavedText(typeof teamValue === 'string' ? teamValue : Array.isArray(teamValue) ? teamValue.filter((line): line is string => typeof line === 'string').join('\n') : '', live.steps);
   const statusClass = live.run.status === 'completed' ? 'complete' : live.run.status === 'failed' ? 'failed' : live.run.status === 'needs_input' ? 'needs-input' : '';
   const submitResume = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -472,6 +456,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
       <div className="resume-footer"><span className="field-hint">{resumeText.length.toLocaleString()} / 20,000 characters</span><button className="submit-button" type="submit" disabled={resumeInput.isPending || !resumeText.trim()} data-testid="button-resume-run">{resumeInput.isPending ? 'Resuming…' : 'Resume this run'}</button></div>
       {resumeError && <div className="error-box" role="alert" data-testid="status-resume-error">{resumeError}</div>}
     </form>}
+    <CvssScores steps={live.steps} />
     {replaySource && <ReplayControls replay={replay} />}
     {replay.frame && <div className="replay-tag" data-testid="status-replay">Replay view. The saved result is unchanged; press Show saved result to return.</div>}
     <PathSummary steps={live.steps} />
@@ -479,7 +464,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
     <FaultsPanel faults={live.faults || []} />
     {(live.run.status === 'completed' || markdown) && <section className="brief-card">
       <div className="brief-head"><h2>Assessment brief</h2>{live.run.degraded && <span className="degraded-badge">Degraded output</span>}</div>
-      <MarkdownBrief content={markdown} />
+      <MarkdownBrief content={presentSavedBrief(markdown, live.steps)} />
       {teamMessage && <section className="team-message" aria-labelledby="team-message-heading" data-testid="content-team-message">
         <div className="team-message-head"><h3 id="team-message-heading">Team message</h3><button type="button" className="copy-button" onClick={copyTeamMessage} data-testid="button-copy-team-message">{copyStatus}</button></div>
         <pre>{teamMessage}</pre>

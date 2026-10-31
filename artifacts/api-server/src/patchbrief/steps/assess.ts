@@ -155,6 +155,7 @@ export function createAssessStep(
         return {
           output_summary: summary,
           cvss: extracted.cvss,
+          cvss_scores: (context.priorOutputs.fetch?.advisory as { cvss_scores?: unknown } | undefined)?.cvss_scores ?? [],
           severity,
           items,
           affected_items: affectedItems,

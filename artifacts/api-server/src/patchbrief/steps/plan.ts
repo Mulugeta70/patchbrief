@@ -15,6 +15,7 @@ interface AssessedItem {
 interface AssessOutput extends Record<string, unknown> {
   output_summary: string;
   affected_items: AssessedItem[];
+  not_affected_items?: AssessedItem[];
   undetermined_items: Array<{ name: string; version: string }>;
   severity: string;
   cvss: number | null;
@@ -77,10 +78,9 @@ export function createPlanStep(
       const assessment = requirePriorOutput<AssessOutput>(context, "assess");
       const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
       if (assessment.affected_items.length === 0) {
-        const note =
-          assessment.undetermined_items.length > 0
-            ? "No action needed for confirmed affected stack items; some version comparisons are inconclusive."
-            : "No action needed for the tracked stack items.";
+        const count = assessment.affected_items.length + (assessment.not_affected_items?.length ?? 0) + assessment.undetermined_items.length;
+        const note = `None of the ${count} items in My stack matched. This only covers software you have listed.${
+          assessment.undetermined_items.length ? " Some version comparisons are inconclusive; check the vendor advisory." : ""}`;
         return context.attempts.runLocal(async () => ({
           output_summary: "Wrote 1 no-action checklist note (no LLM).",
           wording_path: "no_action",

@@ -1,4 +1,6 @@
 import type { Advisory } from "../clients/advisoryClient";
+import { formatCvssScore } from "../clients/cvss";
+import { scoresForAdvisory, versionEvidence } from "./briefEvidence";
 import {
   requirePriorOutput,
   type PipelineStep,
@@ -29,8 +31,8 @@ interface PlanOutput extends Record<string, unknown> {
   checklist: string[];
 }
 
-function renderAffectedItems(items: AssessItem[]): string {
-  if (items.length === 0) return "No tracked stack items were confirmed affected.";
+function renderAffectedItems(items: AssessItem[], stackCount: number): string {
+  if (items.length === 0) return `None of the ${stackCount} items in My stack matched. This only covers software you have listed.`;
   return items
     .map(
       (item) =>
@@ -59,8 +61,10 @@ export const briefStep: PipelineStep = {
           : plan.wording_path === "no_action" ? "No-action note (no LLM)" : "Not recorded in this saved run";
       const advisory = fetched.advisory;
       const summary = advisory.description?.trim() || "No advisory description provided.";
-      const cvssLabel =
-        assessment.cvss === null ? "CVSS unavailable" : `CVSS ${assessment.cvss}`;
+      const scores = scoresForAdvisory(advisory, assessment.cvss);
+      const cvssLabel = scores[0] ? formatCvssScore(scores[0]) : "CVSS unavailable";
+      const versions = versionEvidence(advisory, extracted);
+      const stackCount = assessment.affected_items.length + assessment.not_affected_items.length + assessment.undetermined_items.length;
 
       const uncertainty =
         assessment.undetermined_items.length > 0
@@ -96,8 +100,15 @@ export const briefStep: PipelineStep = {
         "## Severity",
         `${assessment.severity} (${cvssLabel})`,
         "",
+        ...(scores.length > 1 ? [`Other CVSS scores: ${scores.slice(1).map(formatCvssScore).join("; ")}`, ""] : []),
+        "## Affected versions",
+        versions.affected,
+        "",
+        "## Fixed in",
+        versions.fixed,
+        "",
         "## Affected stack items",
-        renderAffectedItems(assessment.affected_items),
+        renderAffectedItems(assessment.affected_items, stackCount),
         uncertainty,
         "",
         "## Remediation checklist",
@@ -116,17 +127,19 @@ export const briefStep: PipelineStep = {
             ? `none confirmed; comparison inconclusive for ${assessment.undetermined_items
                 .map((item) => item.name)
                 .join(", ")}`
-            : "none";
+            : `none of ${stackCount} listed items matched; this only covers software you have listed`;
       const teamMessage = [
         `${advisory.cve_id ?? "Advisory"}: ${assessment.severity} (${cvssLabel}).`,
         `Affected tracked stack items: ${affectedLabel}.`,
-        `Remediation: ${plan.checklist[0] ?? "No action needed."}`,
+        `Remediation: ${plan.checklist[0] ?? "Check the vendor advisory."}`,
       ].join("\n");
 
       return {
         output_summary: `Brief: ${markdown.trim().split(/\s+/).length} words.`,
         extraction_path: extracted.extraction_path ?? null,
         wording_path: plan.wording_path ?? null,
+        cvss_scores: scores,
+        cvss_label: cvssLabel,
         markdown,
         team_message: teamMessage,
       };

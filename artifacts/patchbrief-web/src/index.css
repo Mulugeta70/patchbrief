@@ -467,6 +467,10 @@
 .detail-sub { margin-top:16px; font:600 10px var(--app-font-mono); text-transform:uppercase; letter-spacing:.1em; color:hsl(var(--muted-foreground)); }
 .attempt-empty { margin-top:8px; font-size:12px; color:hsl(var(--muted-foreground)); }
 .attempt-list { list-style:none; padding:0; margin:8px 0 0; border-left:1px solid hsl(var(--border)); }
+.cvss-evidence { display:flex; flex-direction:column; gap:6px; padding:14px 0; font-size:14px; }
+.cvss-evidence small, .other-cvss { color:hsl(var(--muted-foreground)); font-size:12px; }
+.brief-content a { text-decoration:underline; text-underline-offset:3px; overflow-wrap:anywhere; }
+.references-toggle { margin-top:8px; text-decoration:underline; }
 .site-footer { max-width:1240px; margin:24px auto; padding:0 28px; font-size:13px; }
 .site-footer a, .featured-run a { text-decoration:underline; text-underline-offset:3px; }
 .featured-run { margin-top:24px; font-size:14px; }

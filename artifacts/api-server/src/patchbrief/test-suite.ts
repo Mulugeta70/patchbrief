@@ -25,7 +25,9 @@ try {
     "src/patchbrief/worker.test.ts",
     "src/patchbrief/llm-limits.test.ts",
     "src/patchbrief/pipeline-details.test.ts",
+    "src/patchbrief/advisory-evidence.test.ts",
     "../patchbrief-web/src/lib/replay.test.ts",
+    "../patchbrief-web/src/lib/brief-presentation.test.ts",
     "src/patchbrief/worker-integration.test.ts",
   ], {
     stdio: "inherit",
