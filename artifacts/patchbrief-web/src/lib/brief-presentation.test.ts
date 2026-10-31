@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Step } from "@workspace/api-client-react";
 import { presentSavedBrief, labelSavedText, presentTeamMessage } from "./brief-presentation";
-import { fixedBoundaryLines, parseAffectedRanges, visibleRanges, NO_MATCH_CHECKLIST, processingPathLabel } from "./version-presentation";
+import { fixedBoundaryLines, parseAffectedRanges, visibleRanges, NO_MATCH_CHECKLIST, INCONCLUSIVE_CHECKLIST, processingPathLabel } from "./version-presentation";
 
 test("old saved briefs gain source-only version sections and scoped wording without modifying saved rows", () => {
   const steps = [
@@ -25,7 +25,7 @@ test("old saved briefs gain source-only version sections and scoped wording with
 test("saved runs group fixed boundaries, show the scoped no-match line once, and match the team checklist", () => {
   const bounds = ["8.2.35", "8.3.36", "8.4.27", "8.5.12"].map((version) => ({ product: "php", version }));
   const steps = [
-    { name: "fetch", output: { advisory: { source: "nvd", affected: null, excluded_upper_bounds: bounds } } },
+    { name: "fetch", output: { advisory: { source: "nvd", affected: [{ product: "php", versions: ["<8.2.35"] }], excluded_upper_bounds: bounds } } },
     { name: "assess", output: { affected_items: [], not_affected_items: [{}], undetermined_items: [] } },
   ] as Step[];
   const note = "None of the 1 items in My stack matched. This only covers software you have listed.";
@@ -43,6 +43,38 @@ test("saved runs group fixed boundaries, show the scoped no-match line once, and
   assert.equal(team.split("\n")[2], NO_MATCH_CHECKLIST);
   assert.ok(!team.includes("None of the"));
   assert.equal(JSON.stringify(steps), before);
+});
+
+test("saved empty extraction and inconclusive comparisons never present nothing-to-patch wording", () => {
+  for (const [products, unknownItems, affectedItems] of [
+    [[], [], []],
+    [[{ product: "lodash", versions: [] }], [], []],
+    [[{ product: "lodash", versions: ["<4.17.21"] }], [{ name: "lodash" }], []],
+    [[{ product: "lodash", versions: ["<4.17.21"] }], [{ name: "other" }], [{ name: "lodash" }]],
+  ]) {
+    const steps = [
+      { name: "extract", output: { affected: products } },
+      { name: "assess", output: { affected_items: affectedItems, not_affected_items: [], undetermined_items: unknownItems } },
+    ] as Step[];
+    const before = JSON.stringify(steps);
+    const brief = presentSavedBrief(`## Remediation checklist\n- ${NO_MATCH_CHECKLIST}\n- Verify lodash after patching.\n\n## References\nNo references were provided by the advisory source.`, steps);
+    assert.ok(!brief.includes("Nothing to patch"));
+    assert.ok(brief.includes(INCONCLUSIVE_CHECKLIST));
+    assert.ok(brief.includes("Verify lodash after patching."));
+    const team = presentTeamMessage(`Advisory: High\nAffected tracked stack items: none matched.\n${NO_MATCH_CHECKLIST}`, steps);
+    assert.equal(team.split("\n")[2], INCONCLUSIVE_CHECKLIST);
+    assert.equal(team.split("\n").length, 3);
+    assert.equal(JSON.stringify(steps), before);
+  }
+});
+
+test("empty-reference wording is removed only from version sections of saved briefs", () => {
+  const empty = "No reference was provided by the source.";
+  const result = presentSavedBrief(`## Affected versions\nVersions not stated. ${empty}\n\n## Fixed in\nNot stated. ${empty}\n\n## References\n${empty}`, []);
+  assert.match(result, /## Affected versions\nVersions not stated\./);
+  assert.match(result, /## Fixed in\nNot stated\./);
+  assert.equal(result.split(empty).length - 1, 1);
+  assert.match(result, /## References\nNo reference was provided by the source\./);
 });
 
 test("affected-version previews show three ranges per product and expand to all saved ranges", () => {

@@ -446,7 +446,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
       <div>
         <h1>{heading.title}</h1>
         {heading.preview && <p className="advisory-preview">{heading.preview}</p>}
-        <p>{connection === 'replay' ? 'Saved replay of a finished run' : 'Live review trace and evidence summary'}</p>
+        <p>Run trace</p>
         <div className="status-line">
           <span className={`live-dot ${statusClass}`} />
           <span data-testid="status-run">{live.run.status === 'completed' ? 'Run complete' : live.run.status === 'failed' ? 'Review failed' : live.run.status === 'needs_input' ? 'Needs advisory input' : live.run.status === 'queued' ? 'Queued for a worker' : 'Review in progress'}</span>
@@ -460,7 +460,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
         {showId && <button type="button" className="copy-button" onClick={copyLink} data-testid="button-copy-link">{linkStatus}</button>}
       </div>
     </div>
-    {live.run.llmDisabledReason && <div className="llm-note" data-testid="text-llm-disabled">
+    {live.run.llmDisabledReason && heading.title === 'Pasted advisory' && <div className="llm-note" data-testid="text-llm-disabled">
       <strong>Rule-based (no LLM)</strong> The model was not used for this run: {live.run.llmDisabledReason}
     </div>}
     {live.run.status === 'needs_input' && <form className="resume-panel fade-in" onSubmit={submitResume} data-testid="form-resume-run">

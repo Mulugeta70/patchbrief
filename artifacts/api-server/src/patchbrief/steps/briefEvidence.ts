@@ -1,6 +1,20 @@
 import type { Advisory } from "../clients/advisoryClient";
 import type { CvssScore } from "../clients/cvss";
 
+export const INCONCLUSIVE_CHECKLIST = "Could not determine whether your stack is affected: the advisory did not state affected versions.";
+export const NO_MATCH_CHECKLIST = "Nothing to patch from your current list. Add other software you run to My stack and rerun.";
+
+export function comparisonIsInconclusive(
+  extracted: { affected?: unknown },
+  assessment: { undetermined_items?: unknown },
+  advisory?: { affected?: unknown },
+) {
+  if (Array.isArray(assessment.undetermined_items) && assessment.undetermined_items.length > 0) return true;
+  const products = extracted.affected !== undefined ? extracted.affected : advisory?.affected;
+  return !Array.isArray(products) || !products.some((product) =>
+    Array.isArray(product?.versions) && product.versions.some((version: unknown) => typeof version === "string" && version.trim()));
+}
+
 export function scoresForAdvisory(advisory: Advisory, fallbackScore = advisory.cvss): CvssScore[] {
   if (advisory.cvss_scores?.length) return advisory.cvss_scores;
   return fallbackScore === null ? [] : [{
@@ -12,7 +26,7 @@ export function scoresForAdvisory(advisory: Advisory, fallbackScore = advisory.c
 
 export function versionEvidence(advisory: Advisory, extracted: Record<string, unknown>) {
   const vendorLink = advisory.references?.[0]
-    ? ` Vendor advisory: ${advisory.references[0]}` : " No reference was provided by the source.";
+    ? ` Vendor advisory: ${advisory.references[0]}` : "";
   if (advisory.source === "nvd") {
     const products = advisory.affected ?? [];
     const hasRanges = products.some((p) => p.versions.length > 0);

@@ -1,8 +1,10 @@
 export const NO_MATCH_CHECKLIST = 'Nothing to patch from your current list. Add other software you run to My stack and rerun.';
+export const INCONCLUSIVE_CHECKLIST = 'Could not determine whether your stack is affected: the advisory did not state affected versions.';
 
 export function processingPathLabel(value: string) {
   const labels: Record<string, string> = {
     nvd_structured: 'NVD fields, no LLM', no_action: 'No-match note',
+    inconclusive: 'Inconclusive comparison',
     llm_pasted: 'Pasted text, LLM', rule_based_pasted: 'Pasted text, rule-based fallback',
     llm: 'LLM wording', rule_based: 'Rule-based fallback',
     rule_based_no_llm: 'Rule-based (no LLM)',

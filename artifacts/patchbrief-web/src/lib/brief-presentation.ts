@@ -1,6 +1,18 @@
 import type { Step } from '@workspace/api-client-react';
 import { savedScores, scoreLabel } from './cvss-presentation';
-import { fixedBoundaryLines, NO_MATCH_CHECKLIST } from './version-presentation';
+import { fixedBoundaryLines, NO_MATCH_CHECKLIST, INCONCLUSIVE_CHECKLIST } from './version-presentation';
+
+function comparisonIsInconclusive(steps: Step[]) {
+  const assessment = steps.find((s) => s.name === 'assess')?.output;
+  if (!assessment || (!Array.isArray(assessment.affected_items) && !Array.isArray(assessment.items))) return true;
+  if (Array.isArray(assessment?.undetermined_items) && assessment.undetermined_items.length > 0) return true;
+  if (Array.isArray(assessment?.items) && assessment.items.some((item) => item.status === 'undetermined')) return true;
+  const extracted = steps.find((s) => s.name === 'extract')?.output;
+  const advisory = steps.find((s) => s.name === 'fetch')?.output?.advisory as { affected?: unknown } | undefined;
+  const products = extracted?.affected !== undefined ? extracted.affected : advisory?.affected;
+  return !Array.isArray(products) || !products.some((product) =>
+    Array.isArray(product?.versions) && product.versions.some((version: unknown) => typeof version === 'string' && version.trim()));
+}
 
 function hasNoMatches(steps: Step[]) {
   const assessment = steps.find((s) => s.name === 'assess')?.output;
@@ -12,7 +24,10 @@ function hasNoMatches(steps: Step[]) {
 
 export function presentTeamMessage(content: string, steps: Step[]) {
   const lines = labelSavedText(content, steps).split('\n');
-  if (content && hasNoMatches(steps)) {
+  if (content && comparisonIsInconclusive(steps)) {
+    if (hasNoMatches(steps) && !/inconclusive/.test(lines[1] ?? '')) lines[1] = 'Affected tracked stack items: none confirmed.';
+    lines[2] = INCONCLUSIVE_CHECKLIST;
+  } else if (content && hasNoMatches(steps)) {
     lines[1] = /inconclusive/.test(lines[1] ?? '') ? lines[1]
       : 'Affected tracked stack items: none matched.';
     lines[2] = NO_MATCH_CHECKLIST;
@@ -23,6 +38,10 @@ export function presentTeamMessage(content: string, steps: Step[]) {
 function replaceSection(text: string, heading: string, body: string) {
   return text.replace(new RegExp(`(^## ${heading}\\s*\\n)[\\s\\S]*?(?=^## |$(?![\\s\\S]))`, 'm'),
     (_match, title: string) => `${title}${body}\n\n`);
+}
+
+function sectionBody(text: string, heading: string) {
+  return text.match(new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'))?.[1]?.trim() ?? '';
 }
 
 export function labelSavedText(content: string, steps: Step[]) {
@@ -79,6 +98,9 @@ export function presentSavedBrief(content: string, steps: Step[]) {
   if (advisory?.source === 'nvd' && advisory.excluded_upper_bounds?.length) {
     text = replaceSection(text, 'Fixed in', fixedBoundaryLines(advisory.excluded_upper_bounds));
   }
+  for (const heading of ['Affected versions', 'Fixed in']) {
+    text = replaceSection(text, heading, sectionBody(text, heading).replaceAll('No reference was provided by the source.', '').trim());
+  }
   const assessment = steps.find((s) => s.name === 'assess')?.output;
   if (typeof assessment?.severity === 'string') {
     const scores = savedScores(steps);
@@ -87,7 +109,12 @@ export function presentSavedBrief(content: string, steps: Step[]) {
       ? `\n\nOther CVSS scores: ${scores.slice(1).map(scoreLabel).join('; ')}` : ''));
   }
   // Match legacy wording too, without changing the immutable saved record.
-  if (hasNoMatches(steps) || /None of the \d+ items in My stack matched/.test(text)) {
+  if (comparisonIsInconclusive(steps)) {
+    const existing = sectionBody(text, 'Remediation checklist').split('\n')
+      .filter((line) => !/Nothing to patch|None of the \d+ items in My stack matched/i.test(line))
+      .filter((line) => !line.includes(INCONCLUSIVE_CHECKLIST)).join('\n').trim();
+    text = replaceSection(text, 'Remediation checklist', `${existing ? `${existing}\n` : ''}- ${INCONCLUSIVE_CHECKLIST}`);
+  } else if (hasNoMatches(steps) || /None of the \d+ items in My stack matched/.test(text)) {
     text = replaceSection(text, 'Remediation checklist', `- ${NO_MATCH_CHECKLIST}`);
   }
   return text;

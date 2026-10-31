@@ -1,6 +1,6 @@
 import type { Advisory } from "../clients/advisoryClient";
 import { formatCvssScore } from "../clients/cvss";
-import { scoresForAdvisory, versionEvidence } from "./briefEvidence";
+import { scoresForAdvisory, versionEvidence, comparisonIsInconclusive, INCONCLUSIVE_CHECKLIST, NO_MATCH_CHECKLIST } from "./briefEvidence";
 import {
   requirePriorOutput,
   type PipelineStep,
@@ -60,7 +60,8 @@ export const briefStep: PipelineStep = {
       const checklistPath = plan.wording_path === "llm" ? "LLM wording"
         : plan.wording_path === "rule_based_no_llm" ? "Rule-based (no LLM)"
         : plan.wording_path === "rule_based" ? "Rule-based fallback"
-          : plan.wording_path === "no_action" ? "No-match note" : "Not recorded in this saved run";
+          : plan.wording_path === "no_action" ? "No-match note"
+          : plan.wording_path === "inconclusive" ? "Inconclusive comparison" : "Not recorded in this saved run";
       const advisory = fetched.advisory;
       const summary = advisory.description?.trim() || "No advisory description provided.";
       const scores = scoresForAdvisory(advisory, assessment.cvss);
@@ -74,8 +75,12 @@ export const briefStep: PipelineStep = {
               .map((item) => `${item.name} ${item.version}`)
               .join(", ")}.`
           : "";
-      const noMatchNote = "Nothing to patch from your current list. Add other software you run to My stack and rerun.";
-      const checklist = (assessment.affected_items.length ? plan.checklist : [noMatchNote])
+      const inconclusive = comparisonIsInconclusive(extracted, assessment, advisory);
+      const noMatchNote = inconclusive ? INCONCLUSIVE_CHECKLIST : NO_MATCH_CHECKLIST;
+      const plannedItems = assessment.affected_items.length ? plan.checklist : [noMatchNote];
+      const checklist = (inconclusive
+        ? [...plannedItems.filter((item) => !/nothing to patch/i.test(item) && item !== INCONCLUSIVE_CHECKLIST), INCONCLUSIVE_CHECKLIST]
+        : plannedItems)
         .map((item) => `- ${item}`).join("\n");
       const references =
         advisory.references && advisory.references.length > 0
@@ -133,7 +138,8 @@ export const briefStep: PipelineStep = {
       const teamMessage = [
         `${advisory.cve_id ?? "Advisory"}: ${assessment.severity}, ${cvssLabel}.`,
         `Affected tracked stack items: ${affectedLabel}.`,
-        assessment.affected_items.length === 0 ? noMatchNote
+        inconclusive ? INCONCLUSIVE_CHECKLIST
+          : assessment.affected_items.length === 0 ? noMatchNote
           : `Remediation: ${plan.checklist[0] ?? "Check the vendor advisory."}`,
       ].join("\n");
 

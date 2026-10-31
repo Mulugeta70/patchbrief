@@ -7,6 +7,7 @@ import { createAssessStep } from "./steps/assess";
 import { createPlanStep } from "./steps/plan";
 import { briefStep } from "./steps/brief";
 import type { PipelineContext } from "./pipelineTypes";
+import { INCONCLUSIVE_CHECKLIST, versionEvidence } from "./steps/briefEvidence";
 
 const metrics = {
   cvssMetricV31: [
@@ -93,6 +94,29 @@ test("no-match wording states the exact saved stack count, including an empty st
     assert.match(String(brief.markdown), /Extraction: NVD fields, no LLM. Checklist: No-match note/);
     assert.equal(String(brief.markdown).includes("No action needed for the tracked stack items"), false);
   }
+});
+
+test("empty affected-version evidence uses uncertainty in the plan, brief and third team-message line", async () => {
+  const { context, brief } = await makeBrief(undefined);
+  assert.deepEqual(context.priorOutputs.plan?.checklist, [INCONCLUSIVE_CHECKLIST]);
+  assert.ok(String(brief.markdown).includes(INCONCLUSIVE_CHECKLIST));
+  assert.ok(!String(brief.markdown).includes("Nothing to patch"));
+  assert.equal(String(brief.team_message).split("\n")[2], INCONCLUSIVE_CHECKLIST);
+});
+
+test("an inconclusive stack comparison uses uncertainty even when advisory ranges exist", async () => {
+  const { context, brief } = await makeBrief(configuration, [{ name: "lodash", version: "unknown" }]);
+  assert.equal((context.priorOutputs.assess?.undetermined_items as unknown[]).length, 1);
+  assert.deepEqual(context.priorOutputs.plan?.checklist, [INCONCLUSIVE_CHECKLIST]);
+  assert.ok(!String(brief.markdown).includes("Nothing to patch"));
+  assert.equal(String(brief.team_message).split("\n")[2], INCONCLUSIVE_CHECKLIST);
+});
+
+test("missing references do not add an empty-reference sentence to version evidence", async () => {
+  const { advisory } = await makeBrief(undefined);
+  const evidence = versionEvidence({ ...advisory, references: [] }, { affected: [], fixed_in: null });
+  assert.ok(!evidence.affected.includes("No reference"));
+  assert.ok(!evidence.fixed.includes("No reference"));
 });
 
 test("Fixed in groups every excluded boundary by product without repeating the qualification", async () => {

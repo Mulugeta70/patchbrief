@@ -6,6 +6,7 @@ import type { ExtractedAdvisory } from "./extract";
 import { requirePriorOutput, type PipelineStep } from "../pipelineTypes";
 import { errorMessage } from "../retry";
 import { hasLlmKey, NO_LLM_REASON } from "../clients/llmMode";
+import { comparisonIsInconclusive, INCONCLUSIVE_CHECKLIST, NO_MATCH_CHECKLIST } from "./briefEvidence";
 
 interface AssessedItem {
   name: string;
@@ -78,17 +79,20 @@ export function createPlanStep(
     async run(context) {
       const assessment = requirePriorOutput<AssessOutput>(context, "assess");
       const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
+      const inconclusive = comparisonIsInconclusive(extracted, assessment);
+      const withUncertainty = (checklist: string[]) => inconclusive
+        ? [...checklist.filter((item) => !/nothing to patch/i.test(item)), INCONCLUSIVE_CHECKLIST] : checklist;
       const disabledReason = context.llmDisabledReason ?? (generateText === llmClient && !hasLlmKey() ? NO_LLM_REASON : null);
       if (assessment.affected_items.length === 0) {
-        const note = "Nothing to patch from your current list. Add other software you run to My stack and rerun.";
+        const note = inconclusive ? INCONCLUSIVE_CHECKLIST : NO_MATCH_CHECKLIST;
         return context.attempts.runLocal(async () => ({
-          output_summary: "Wrote 1 no-match note (no LLM).",
-          wording_path: disabledReason ? "rule_based_no_llm" : "no_action",
+          output_summary: `Wrote 1 ${inconclusive ? "uncertainty" : "no-match"} note (no LLM).`,
+          wording_path: disabledReason ? "rule_based_no_llm" : inconclusive ? "inconclusive" : "no_action",
           checklist: [note],
         }));
       }
       const fallback = (reason: string, attempted = true) => {
-        const checklist = createFallbackChecklist(assessment.affected_items, extracted.fixed_in);
+        const checklist = withUncertainty(createFallbackChecklist(assessment.affected_items, extracted.fixed_in));
         return {
           output_summary: `Wrote ${checklist.length} checklist items (${attempted ? "rule-based fallback" : "Rule-based (no LLM)"}).`,
           wording_path: attempted ? "rule_based" : "rule_based_no_llm",
@@ -155,10 +159,11 @@ export function createPlanStep(
           throw error;
         }
 
+        const finalChecklist = withUncertainty(checklist);
         return {
-          output_summary: `Wrote ${checklist.length} checklist items (LLM wording).`,
+          output_summary: `Wrote ${finalChecklist.length} checklist items (LLM wording).`,
           wording_path: "llm",
-          checklist,
+          checklist: finalChecklist,
         };
       } catch (error) {
         if (isWorkerStop(error)) throw error;
