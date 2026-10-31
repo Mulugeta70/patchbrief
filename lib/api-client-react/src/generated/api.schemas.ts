@@ -5,6 +5,25 @@
  * PatchBrief API
  * OpenAPI spec version: 0.1.0
  */
+export interface StackItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  version: string;
+}
+
+export interface StackItem {
+  id: string;
+  name: string;
+  version: string;
+}
+
 export interface HealthStatus {
   status: string;
 }

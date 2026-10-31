@@ -150,7 +150,7 @@ export function createAssessStep(
           (item) => item.status === "undetermined",
         );
         const severity = severityBand(extracted.cvss);
-        const summary = `${affectedItems.length} tracked stack item(s) affected; severity ${severity}.`;
+        const summary = `${affectedItems.length} of ${stackItems.length} stack items affected, severity ${severity}; ${undeterminedItems.length} undetermined.`;
 
         return {
           output_summary: summary,

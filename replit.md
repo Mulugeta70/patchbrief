@@ -17,6 +17,9 @@ PatchBrief runs a source-grounded advisory review pipeline and stores runs, step
 - `LLM_MODEL` defaults to `gpt-4.1-nano`. All LLM calls cap output at 1,024 tokens and total prompt text at 16,000 characters; advisory excerpts are capped at 8,000 characters. Full source evidence remains stored and used for validation/fallback.
 - `FEATURED_RUN_ID` optionally adds the featured replay link under `/how-it-works`'s live trace. Set this on the web service and restart/rebuild the frontend.
 - `GITHUB_REPO_URL` supplies the footer's GitHub destination. Set this on the web service and restart/rebuild the frontend.
+- The saved stack is shared app-wide (no accounts). Example items are seeded only once; removing them, even all of them, must survive restarts.
+- CVE extraction uses NVD structured fields without an LLM; pasted-text extraction and checklist wording alone may use the LLM. The brief records both paths.
+- Saved-run playback derives local frames from persisted steps/attempts only. Playback never reruns the pipeline or fetches data, and recorded node durations are not replaced by animation timings.
 - `PATCHBRIEF_MAX_RUNS_PER_DAY` defaults to 100 (UTC day). After this budget, runs are accepted as degraded with no LLM calls; input-size and per-IP limits still reject requests.
 
 ## Stack

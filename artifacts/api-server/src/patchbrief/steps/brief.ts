@@ -46,6 +46,17 @@ export const briefStep: PipelineStep = {
       const fetched = requirePriorOutput<FetchOutput>(context, "fetch");
       const assessment = requirePriorOutput<AssessOutput>(context, "assess");
       const plan = requirePriorOutput<PlanOutput>(context, "plan");
+      const extracted = requirePriorOutput<Record<string, unknown>>(context, "extract");
+      const extractionPath = extracted.extraction_path === "nvd_structured"
+        ? "NVD structured fields (no LLM)"
+        : extracted.extraction_path === "llm_pasted"
+          ? "Pasted advisory text (LLM)"
+          : extracted.extraction_path === "rule_based_pasted"
+            ? "Pasted advisory text (rule-based fallback)"
+            : "Not recorded in this saved run";
+      const checklistPath = plan.wording_path === "llm" ? "LLM wording"
+        : plan.wording_path === "rule_based" ? "Rule-based fallback"
+          : plan.wording_path === "no_action" ? "No-action note (no LLM)" : "Not recorded in this saved run";
       const advisory = fetched.advisory;
       const summary = advisory.description?.trim() || "No advisory description provided.";
       const cvssLabel =
@@ -75,6 +86,9 @@ export const briefStep: PipelineStep = {
         "## Summary",
         summary,
         published,
+        "",
+        "## Processing path",
+        `Extraction: ${extractionPath}. Checklist: ${checklistPath}.`,
         "",
         "## Degraded processing",
         degradedSection,
@@ -110,7 +124,9 @@ export const briefStep: PipelineStep = {
       ].join("\n");
 
       return {
-        output_summary: `${advisory.cve_id ?? "Advisory"} brief assembled with ${assessment.affected_items.length} affected tracked item(s).`,
+        output_summary: `Brief: ${markdown.trim().split(/\s+/).length} words.`,
+        extraction_path: extracted.extraction_path ?? null,
+        wording_path: plan.wording_path ?? null,
         markdown,
         team_message: teamMessage,
       };

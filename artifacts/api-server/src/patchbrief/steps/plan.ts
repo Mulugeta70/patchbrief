@@ -82,16 +82,21 @@ export function createPlanStep(
             ? "No action needed for confirmed affected stack items; some version comparisons are inconclusive."
             : "No action needed for the tracked stack items.";
         return context.attempts.runLocal(async () => ({
-          output_summary: note,
+          output_summary: "Wrote 1 no-action checklist note (no LLM).",
+          wording_path: "no_action",
           checklist: [note],
         }));
       }
-      const fallback = (reason: string) => ({
-        output_summary: "Created a remediation checklist from the affected stack table (fallback).",
-        checklist: createFallbackChecklist(assessment.affected_items, extracted.fixed_in),
-        fallback_used: true,
-        fallback_reason: reason,
-      });
+      const fallback = (reason: string) => {
+        const checklist = createFallbackChecklist(assessment.affected_items, extracted.fixed_in);
+        return {
+          output_summary: `Wrote ${checklist.length} checklist items (rule-based fallback).`,
+          wording_path: "rule_based",
+          checklist,
+          fallback_used: true,
+          fallback_reason: reason,
+        };
+      };
       if (context.llmDisabledReason) {
         return context.attempts.runLocal(async () => fallback(context.llmDisabledReason!));
       }
@@ -151,7 +156,8 @@ export function createPlanStep(
         }
 
         return {
-          output_summary: checklist[0] ?? "Remediation checklist generated.",
+          output_summary: `Wrote ${checklist.length} checklist items (LLM wording).`,
+          wording_path: "llm",
           checklist,
         };
       } catch (error) {

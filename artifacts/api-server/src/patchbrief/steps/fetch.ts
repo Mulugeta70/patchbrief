@@ -17,9 +17,10 @@ export function createFetchStep(
         }
         throw error;
       }
-      const summary = advisory.cve_id
-        ? `Fetched advisory data for ${advisory.cve_id}.`
-        : `Received pasted advisory text (${context.input.trim().length} characters).`;
+      const chars = advisory.description?.length ?? 0;
+      const summary = advisory.source === "nvd"
+        ? `Looked up ${advisory.cve_id}, ${chars.toLocaleString("en-US")} chars (NVD).`
+        : `Received pasted advisory, ${chars.toLocaleString("en-US")} chars.`;
 
       return { output_summary: summary, advisory };
     },

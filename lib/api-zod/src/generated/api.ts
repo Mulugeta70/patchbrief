@@ -9,6 +9,48 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List the shared saved stack
+ */
+export const ListStackItemsResponseItem = zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string(),
+  "version": zod.string()
+})
+export const ListStackItemsResponse = zod.array(ListStackItemsResponseItem)
+
+
+/**
+ * @summary Add an item to the shared stack (maximum 30)
+ */
+export const addStackItemBodyNameMax = 80;
+
+export const addStackItemBodyVersionMax = 50;
+
+
+
+export const AddStackItemBody = zod.object({
+  "name": zod.string().min(1).max(addStackItemBodyNameMax),
+  "version": zod.string().min(1).max(addStackItemBodyVersionMax)
+})
+
+export const AddStackItemResponse = zod.object({
+  "id": zod.string().uuid(),
+  "name": zod.string(),
+  "version": zod.string()
+})
+
+
+/**
+ * @summary Remove a saved stack item
+ */
+export const DeleteStackItemParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const DeleteStackItemResponse = zod.void()
+
+
+/**
  * @summary Health check
  */
 export const GetHealthResponse = zod.object({
@@ -23,6 +65,26 @@ export const GetHealthResponse = zod.object({
 export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })
+
+
+/**
+ * @summary List the ten most recent saved runs
+ */
+export const ListRecentRunsResponseItem = zod.object({
+  "id": zod.string().uuid(),
+  "idempotencyKey": zod.string(),
+  "input": zod.string(),
+  "status": zod.enum(['queued', 'running', 'needs_input', 'completed', 'failed']),
+  "degraded": zod.boolean(),
+  "slowMode": zod.boolean(),
+  "resumeCount": zod.number().int(),
+  "workerId": zod.string().nullable(),
+  "leaseExpiresAt": zod.coerce.date().nullable(),
+  "llmDisabledReason": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "finishedAt": zod.coerce.date().nullable()
+})
+export const ListRecentRunsResponse = zod.array(ListRecentRunsResponseItem)
 
 
 /**

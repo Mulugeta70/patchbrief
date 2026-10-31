@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { db, pool, runsTable, stepsTable } from "@workspace/db";
+import { db, pool, runsTable, stepsTable, stackItemsTable } from "@workspace/db";
 import { createRun, getRunWithSteps, seedStackItems } from "./db";
 import { claimExpiredRuns, withRunLock } from "./leases";
 import { runPipeline } from "./runner";
@@ -223,4 +223,75 @@ test("a finished but unsaved step reruns with identical output and no duplicate 
     assert.deepEqual(saved.attempts.filter((a) => a.stepName === "assess").map((a) => a.status),
       ["interrupted", "completed"]);
   } finally { assess.run = original; await cleanup(run.id); }
+});
+
+test("shared stack API persists across clients, validates input, and enforces the 30-item cap atomically", async () => {
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/stack`;
+  const createdIds: string[] = [];
+  const prefix = `stack-test-${randomUUID().slice(0, 8)}`;
+  const post = (name: string, version: string) => fetch(url, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, version }) });
+  try {
+    assert.equal((await post("", "1.2.3")).status, 400);
+    assert.equal((await post("bad-range", ">=1.2.3")).status, 400);
+    const first = await post(`${prefix}-item`, "1.2.3");
+    assert.equal(first.status, 201);
+    const item = await first.json() as { id: string; name: string; version: string };
+    createdIds.push(item.id);
+    const otherClient = await fetch(url, { headers: { "User-Agent": "another-device", Cookie: "" } });
+    const persisted = await otherClient.json() as Array<{ id: string; name: string; version: string }>;
+    assert.ok(persisted.some((row) => row.id === item.id && row.version === "1.2.3"));
+    assert.equal((await post(item.name.toUpperCase(), "2.0.0")).status, 409);
+    for (let i = persisted.length; i < 29; i++) {
+      const response = await post(`${prefix}-${i}`, "1.0.0");
+      assert.equal(response.status, 201);
+      createdIds.push((await response.json() as { id: string }).id);
+    }
+    const competing = await Promise.all([post(`${prefix}-a`, "1.0.0"), post(`${prefix}-b`, "1.0.0")]);
+    assert.deepEqual(competing.map((r) => r.status).sort(), [201, 409]);
+    for (const response of competing) {
+      if (response.status === 201) createdIds.push((await response.json() as { id: string }).id);
+    }
+    const capped = await (await fetch(url)).json() as unknown[];
+    assert.equal(capped.length, 30);
+    assert.equal((await fetch(`${url}/${item.id}`, { method: "DELETE" })).status, 204);
+    assert.equal((await fetch(`${url}/${item.id}`, { method: "DELETE" })).status, 404);
+    await seedStackItems();
+    const afterSeed = await (await fetch(url)).json() as Array<{ id: string }>;
+    assert.equal(afterSeed.length, 29, "Seeding must not repopulate removed items");
+  } finally {
+    for (const id of createdIds) await db.delete(stackItemsTable).where(eq(stackItemsTable.id, id));
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("ten most recent runs remain saved across clients and input is stored before step one", async () => {
+  const ids: string[] = [];
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/runs`;
+  try {
+    for (let i = 0; i < 12; i++) {
+      const originalInput = `Saved advisory ${i}: ${"Evidence. ".repeat(50)}`;
+      const { run } = await createRun(originalInput, `recent-${randomUUID()}`, {}, 0);
+      ids.push(run.id);
+      const beforeStart = (await getRunWithSteps(run.id))!;
+      assert.equal(beforeStart.run.input, originalInput);
+      assert.equal(beforeStart.steps.length, 0);
+      // These history fixtures must not be picked up by the HTTP worker wake-up.
+      await db.update(runsTable).set({ status: "completed", finishedAt: new Date() }).where(eq(runsTable.id, run.id));
+    }
+    const first = await (await fetch(url)).json() as Array<{ id: string; input: string; status: string }>;
+    const refreshed = await (await fetch(url, { headers: { "User-Agent": "fresh-device", Cookie: "" } })).json();
+    assert.deepEqual(refreshed, first);
+    assert.equal(first.length, 10);
+    assert.equal(first[0]?.id, ids[11]);
+    assert.equal(first[9]?.id, ids[2]);
+    assert.equal(first.every((r) => r.status === "completed" && r.input.length > 400), true);
+  } finally {
+    for (const id of ids) await cleanup(id);
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });

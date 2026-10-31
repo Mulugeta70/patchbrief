@@ -18,6 +18,8 @@ export * from './runFault';
 export * from './runInput';
 export * from './runStatus';
 export * from './runWithSteps';
+export * from './stackItem';
+export * from './stackItemInput';
 export * from './step';
 export * from './stepAttempt';
 export * from './stepAttemptStatus';

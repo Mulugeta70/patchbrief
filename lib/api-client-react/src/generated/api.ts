@@ -23,8 +23,11 @@ import type {
   AdvisoryInput,
   ApiError,
   HealthStatus,
+  Run,
   RunInput,
-  RunWithSteps
+  RunWithSteps,
+  StackItem,
+  StackItemInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -53,6 +56,245 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getListStackItemsUrl = () => {
+
+
+
+
+  return `/api/stack`
+}
+
+/**
+ * @summary List the shared saved stack
+ */
+export const listStackItems = async ( options?: Parameters<typeof customFetch>[1]): Promise<StackItem[]> => {
+
+  return customFetch<StackItem[]>(getListStackItemsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStackItemsQueryKey = () => {
+    return [
+    `/api/stack`
+    ] as const;
+    }
+
+
+export const getListStackItemsQueryOptions = <TData = Awaited<ReturnType<typeof listStackItems>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStackItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStackItemsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStackItems>>> = ({ signal }) => listStackItems({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStackItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStackItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listStackItems>>>
+export type ListStackItemsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the shared saved stack
+ */
+
+export function useListStackItems<TData = Awaited<ReturnType<typeof listStackItems>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStackItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStackItemsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddStackItemUrl = () => {
+
+
+
+
+  return `/api/stack`
+}
+
+/**
+ * @summary Add an item to the shared stack (maximum 30)
+ */
+export const addStackItem = async (stackItemInput: StackItemInput, options?: Parameters<typeof customFetch>[1]): Promise<StackItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<StackItem>(getAddStackItemUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(stackItemInput)
+  }
+);}
+
+
+
+
+
+export const getAddStackItemMutationKey = () => ['addStackItem'] as const;
+
+export const getAddStackItemMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addStackItem>>, TError,AddStackItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addStackItem>>, TError,AddStackItemMutationVariables, TContext> => {
+
+const mutationKey = getAddStackItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addStackItem>>, AddStackItemMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  addStackItem(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddStackItemMutationResult = NonNullable<Awaited<ReturnType<typeof addStackItem>>>
+    export type AddStackItemMutationBody = BodyType<StackItemInput>
+    export type AddStackItemMutationError = ErrorType<void>
+    export type AddStackItemMutationVariables = {data: BodyType<StackItemInput>}
+
+    /**
+ * @summary Add an item to the shared stack (maximum 30)
+ */
+export const useAddStackItem = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addStackItem>>, TError,AddStackItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addStackItem>>,
+        TError,
+        AddStackItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAddStackItemMutationOptions(options));
+    }
+
+export const getDeleteStackItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/stack/${id}`
+}
+
+/**
+ * @summary Remove a saved stack item
+ */
+export const deleteStackItem = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteStackItemUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteStackItemMutationKey = () => ['deleteStackItem'] as const;
+
+export const getDeleteStackItemMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStackItem>>, TError,DeleteStackItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteStackItem>>, TError,DeleteStackItemMutationVariables, TContext> => {
+
+const mutationKey = getDeleteStackItemMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteStackItem>>, DeleteStackItemMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteStackItem(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteStackItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteStackItem>>>
+
+    export type DeleteStackItemMutationError = ErrorType<void>
+    export type DeleteStackItemMutationVariables = {id: string}
+
+    /**
+ * @summary Remove a saved stack item
+ */
+export const useDeleteStackItem = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteStackItem>>, TError,DeleteStackItemMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteStackItem>>,
+        TError,
+        DeleteStackItemMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteStackItemMutationOptions(options));
+    }
 
 export const getGetHealthUrl = () => {
 
@@ -197,6 +439,83 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListRecentRunsUrl = () => {
+
+
+
+
+  return `/api/runs`
+}
+
+/**
+ * @summary List the ten most recent saved runs
+ */
+export const listRecentRuns = async ( options?: Parameters<typeof customFetch>[1]): Promise<Run[]> => {
+
+  return customFetch<Run[]>(getListRecentRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRecentRunsQueryKey = () => {
+    return [
+    `/api/runs`
+    ] as const;
+    }
+
+
+export const getListRecentRunsQueryOptions = <TData = Awaited<ReturnType<typeof listRecentRuns>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecentRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRecentRunsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecentRuns>>> = ({ signal }) => listRecentRuns({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRecentRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRecentRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listRecentRuns>>>
+export type ListRecentRunsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the ten most recent saved runs
+ */
+
+export function useListRecentRuns<TData = Awaited<ReturnType<typeof listRecentRuns>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecentRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRecentRunsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

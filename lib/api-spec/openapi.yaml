@@ -13,6 +13,55 @@ tags:
   - name: runs
     description: PatchBrief pipeline runs
 paths:
+  /stack:
+    get:
+      operationId: listStackItems
+      summary: List the shared saved stack
+      responses:
+        "200":
+          description: Saved stack items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StackItem"
+    post:
+      operationId: addStackItem
+      summary: Add an item to the shared stack (maximum 30)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StackItemInput"
+      responses:
+        "201":
+          description: Saved item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StackItem"
+        "400":
+          description: Invalid name or version
+        "409":
+          description: Duplicate item or stack is full
+  /stack/{id}:
+    delete:
+      operationId: deleteStackItem
+      summary: Remove a saved stack item
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Removed
+        "404":
+          description: Item not found
   /health:
     get:
       operationId: getHealth
@@ -39,6 +88,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
   /runs:
+    get:
+      operationId: listRecentRuns
+      summary: List the ten most recent saved runs
+      responses:
+        "200":
+          description: Recent runs, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Run"
     post:
       operationId: createRun
       tags: [runs]
@@ -213,6 +274,29 @@ paths:
                 $ref: "#/components/schemas/ApiError"
 components:
   schemas:
+    StackItemInput:
+      type: object
+      required: [name, version]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        version:
+          type: string
+          minLength: 1
+          maxLength: 50
+    StackItem:
+      type: object
+      required: [id, name, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: string
     HealthStatus:
       type: object
       properties:

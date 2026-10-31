@@ -4,9 +4,13 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import StackPage from '@/pages/stack';
+import { RecentRuns } from '@/components/recent-runs';
+import { ReplayControls, useReplay } from '@/components/replay-controls';
+import { describeApiError } from '@/lib/api-errors';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import {
-  getGetLatestRunQueryKey, getGetRunQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
+  getGetLatestRunQueryKey, getGetRunQueryKey, getListRecentRunsQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
   type FaultInput, type RunFault, type RunWithSteps, type Step, type StepAttempt,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -39,6 +43,7 @@ function Header() {
     <nav className="nav-links" aria-label="Primary navigation">
       <Link href="/" className={`nav-link ${location === '/' ? 'active' : ''}`} data-testid="link-new-review">New run</Link>
       <Link href="/how-it-works" className={`nav-link ${location === '/how-it-works' ? 'active' : ''}`} data-testid="link-how-it-works">How it works</Link>
+      <Link href="/stack" className={`nav-link ${location === '/stack' ? 'active' : ''}`} data-testid="link-my-stack">My stack</Link>
     </nav>
   </header>;
 }
@@ -108,8 +113,12 @@ function BreakItPanel({ faults, setFaults, slowMode, setSlowMode, input }: {
   </section>;
 }
 
+const MAX_INPUT = 20000;
+const DRAFT_KEY = 'patchbrief:draft';
 function Home() {
-  const [input, setInput] = useState('');
+  const [input, setInputState] = useState(() => { try { return sessionStorage.getItem(DRAFT_KEY) || ''; } catch { return ''; } });
+  const setInput = (v: string) => { setInputState(v); try { if (v) sessionStorage.setItem(DRAFT_KEY, v); else sessionStorage.removeItem(DRAFT_KEY); } catch { /* storage unavailable */ } };
+  const qc = useQueryClient();
   const [inputError, setInputError] = useState('');
   const [faults, setFaults] = useState<FaultInput[]>([]);
   const [slowMode, setSlowMode] = useState(false);
@@ -120,6 +129,7 @@ function Home() {
     event.preventDefault();
     const value = input.trim();
     if (!value) { setInputError('Add a CVE identifier or advisory text to begin.'); return; }
+    if (value.length > MAX_INPUT) { setInputError(`Your text is ${value.length.toLocaleString()} characters; the limit is 20,000. Shorten it by ${(value.length - MAX_INPUT).toLocaleString()} characters and submit again. Nothing was sent and your text has been kept.`); return; }
     setInputError('');
     const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
@@ -128,11 +138,8 @@ function Home() {
     createRun.mutate(
       { data: { input: value, ...(faults.length ? { faults } : {}), ...(slowMode ? { slowMode: true } : {}) } },
       {
-        onSuccess: (result) => setLocation(`/run/${encodeURIComponent(result.run.id)}`),
-        onError: (failure) => {
-          const apiMessage = (failure as { data?: { error?: string } }).data?.error;
-          setInputError(apiMessage || 'The review could not be started. Check the input and try again.');
-        },
+        onSuccess: (result) => { void qc.invalidateQueries({ queryKey: getListRecentRunsQueryKey() }); setInput(''); setLocation(`/run/${encodeURIComponent(result.run.id)}`); },
+        onError: (failure) => setInputError(describeApiError(failure, 'The run could not be started. Check the input and try again.')),
       },
     );
   };
@@ -150,8 +157,8 @@ function Home() {
             <span className="eyebrow">01 / Input</span>
           </div>
           <label className="input-label" htmlFor="advisory-input">CVE ID or advisory</label>
-          <textarea id="advisory-input" className="input-control advisory-input" value={input} maxLength={20000} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\nor paste the vendor advisory here'} data-testid="input-advisory" />
-          <p className="field-hint">The supplied text is the source material. {input.length.toLocaleString()} / 20,000 characters.</p>
+          <textarea id="advisory-input" className="input-control advisory-input" value={input} aria-invalid={input.length > MAX_INPUT} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\nor paste the vendor advisory here'} data-testid="input-advisory" />
+          <p className={`field-hint ${input.length > MAX_INPUT ? 'over' : ''}`} data-testid="text-input-count">The supplied text is the source material. {input.length.toLocaleString()} / 20,000 characters.{input.length > MAX_INPUT ? ' Over the limit; shorten before submitting.' : ''} Your draft is kept in this tab.</p>
           <BreakItPanel faults={faults} setFaults={setFaults} slowMode={slowMode} setSlowMode={setSlowMode} input={input} />
           {inputError && <div className="error-box" role="alert" data-testid="status-submit-error">{inputError}</div>}
           <button className="submit-button" type="submit" disabled={createRun.isPending} data-testid="button-submit-run">
@@ -161,6 +168,7 @@ function Home() {
           {createRun.isPending && <p className="field-hint" aria-live="polite">Creating a fresh run. This may take a moment.</p>}
         </form>
       </div>
+      <RecentRuns />
     </main>
   </AppFrame>;
 }
@@ -174,11 +182,11 @@ function statusText(status: DisplayStatus) {
   return status === 'completed' ? 'done' : status === 'fallback_used' ? 'fallback used' : status === 'needs_input' ? 'needs input' : status;
 }
 function formatDuration(ms: number | null | undefined) {
-  if (ms == null) return '—';
+  if (ms == null) return 'not recorded';
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 function formatSummary(step?: Step) {
-  return step?.outputSummary || step?.error || (step?.status === 'running' ? 'Working through this step.' : 'Waiting for the previous step.');
+  return step?.outputSummary || step?.error || (step?.status === 'running' ? 'Working through this step.' : 'No summary recorded yet.');
 }
 const attemptKey = (a: StepAttempt) => `${a.stepName}#${a.attempt}`;
 function unionAttempts(base: StepAttempt[] = [], preferred: StepAttempt[] = []) {
@@ -253,11 +261,16 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
   };
   const centers = [100, 300, 500, 700, 900];
   const statusClass = (status: DisplayStatus) => status === 'completed' ? 'done' : status === 'fallback_used' ? 'fallback' : status === 'needs_input' ? 'needs-input' : status;
-  const shortSummary = (summary: string) => summary.length > 24 ? `${summary.slice(0, 23).trimEnd()}…` : summary;
+  const summaryLines = (summary: string) => summary.split(/\s+/).reduce<string[]>((lines, word) => {
+    const last = lines.length - 1;
+    if (last < 0 || `${lines[last]} ${word}`.length > 30) lines.push(word);
+    else lines[last] += ` ${word}`;
+    return lines;
+  }, []);
   return <div className="trace-card">
     <div className="section-label"><span>Run trace</span><span className={`stream-state ${connection}`} role="status" data-testid="status-sse-connection">{connection === 'replay' ? 'Saved replay' : connection === 'complete' ? 'Complete' : connection === 'reconnecting' ? 'Reconnecting' : connection === 'connected' ? 'Live' : connection === 'idle' ? 'Loading' : 'Connecting'}</span></div>
     <div className="trace-svg-scroll">
-      <svg className="trace-svg" viewBox="0 0 1000 218" role="group" aria-label="Five ordered review steps connected in a horizontal run trace">
+      <svg className="trace-svg" viewBox="0 0 1000 250" role="group" aria-label="Five ordered review steps connected in a horizontal run trace">
         <defs><marker id="trace-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7" fill="none" stroke="#a5aaa5" strokeWidth="1.2" /></marker></defs>
         {steps.slice(0, -1).map((step, index) => {
           const status = normalizedStatus(step);
@@ -295,13 +308,8 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
             <text className="svg-name" x={centers[index]} y="82">{label}</text>
             <text className={`svg-status ${statusClass(status)}`} x={centers[index]} y="103">{statusText(status)}</text>
             <text className="svg-meta" x={centers[index]} y="125">{step.attempt > 1 ? `attempt ${step.attempt} · ` : ''}{formatDuration(step.durationMs)}{count ? ` · ${count} log` : ''}</text>
-            <text className="svg-summary" x={centers[index]} y="151">{shortSummary(summary)}</text>
-            {interrupt !== 'none' && <text className={`interrupt-text ${interrupt}`} x={centers[index] - 26} y="176" data-testid={`status-interrupt-${step.name}`}>{interrupt === 'recovered' ? 'crashed / recovered' : 'interrupted'}</text>}
-            {step.fallbackUsed && <g className="fallback-branch" aria-label={`${label} used a fallback`}>
-              <path d={`M ${centers[index] + 13} 55 C ${centers[index] + 35} 81 ${centers[index] + 35} 145 ${centers[index] + 12} 171`} />
-              <circle cx={centers[index] + 12} cy="178" r="7" />
-              <text x={centers[index] + 12} y="202">fallback</text>
-            </g>}
+            <text className="svg-summary" x={centers[index]} y="151">{summaryLines(summary).map((line, lineIndex) => <tspan key={lineIndex} x={centers[index]} dy={lineIndex ? 14 : 0}>{line}</tspan>)}</text>
+            {interrupt !== 'none' && <text className={`interrupt-text ${interrupt}`} x={centers[index] - 26} y="220" data-testid={`status-interrupt-${step.name}`}>{interrupt === 'recovered' ? 'interrupted / recovered' : 'interrupted'}</text>}
           </g>;
         })}
       </svg>
@@ -313,12 +321,29 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
       return <div className="step-detail fade-in" data-testid="detail-selected-step">
         <div className="detail-head"><span>{STEP_LABELS[step.name] || step.name}{interrupt !== 'none' && <span className={`interrupt-pill ${interrupt}`}>{interrupt === 'recovered' ? 'interrupted, recovered' : 'interrupted'}</span>}</span><span className="node-status">{statusText(normalizedStatus(step))} · attempt {step.attempt || '—'} · {formatDuration(step.durationMs)}</span></div>
         <p className="detail-body">{step.outputSummary || 'No step summary is available yet.'}</p>
+        {pathOf(step) && <p className="path-note" data-testid={`text-path-${step.name}`}>Path used: {pathOf(step)}</p>}
         {step.output && <pre className="detail-body">{JSON.stringify(step.output, null, 2)}</pre>}
         {step.error && <div className="detail-error"><strong>Error</strong><br />{step.error}</div>}
         <div className="detail-sub">Attempt history</div>
         <AttemptHistory attempts={attemptsFor(step.name)} />
       </div>;
     })()}
+  </div>;
+}
+
+function pathOf(step?: Step): string {
+  const o = step?.output as Record<string, unknown> | null | undefined;
+  if (!o) return '';
+  const v = o.extraction_path ?? o.wording_path;
+  return typeof v === 'string' ? v : '';
+}
+function PathSummary({ steps }: { steps: Step[] }) {
+  const extract = pathOf(steps.find((s) => s.name === 'extract'));
+  const plan = pathOf(steps.find((s) => s.name === 'plan'));
+  if (!extract && !plan) return null;
+  return <div className="path-summary" data-testid="text-path-summary">
+    {extract && <span><strong>Extraction path</strong> {extract}</span>}
+    {plan && <span><strong>Checklist wording path</strong> {plan}</span>}
   </div>;
 }
 
@@ -371,6 +396,8 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
   const resumeInput = useSubmitRunInput();
   const queryClient = useQueryClient();
   const live = data || initial;
+  const replaySource = live && isTerminal(live.run.status) ? live : null;
+  const replay = useReplay(replaySource);
   if (isLoading && !live) return <div className="loading-state" data-testid="status-run-loading"><div className="skeleton" style={{ height: 20, width: '35%', marginBottom: 22 }} /><div className="skeleton" style={{ height: 150, width: '100%' }} /></div>;
   if (error && !live) return <div className="empty-state" data-testid="status-run-error">This run could not be loaded. <button className="nav-link" onClick={onRetry} data-testid="button-retry-run">Retry</button></div>;
   if (!live) return <div className="empty-state">No run data is available.</div>;
@@ -383,6 +410,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
     event.preventDefault();
     const value = resumeText.trim();
     if (!value) { setResumeError('Paste the advisory text to resume this run.'); return; }
+    if (value.length > MAX_INPUT) { setResumeError(`Your text is ${value.length.toLocaleString()} characters; the limit is 20,000. Shorten it and resume again. Your text has been kept.`); return; }
     setResumeError('');
     resumeInput.mutate(
       { id: live.run.id, data: { input: value } },
@@ -392,10 +420,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
           queryClient.setQueryData(getGetLatestRunQueryKey(), (old: RunData | undefined) => old?.run.id === live.run.id ? updated : old);
           setResumeText('');
         },
-        onError: (failure) => {
-          const apiMessage = (failure as { data?: { error?: string } }).data?.error;
-          setResumeError(apiMessage || 'The run could not be resumed. Try again.');
-        },
+        onError: (failure) => setResumeError(describeApiError(failure, 'The run could not be resumed. Try again.')),
       },
     );
   };
@@ -443,11 +468,14 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
     {live.run.status === 'needs_input' && <form className="resume-panel fade-in" onSubmit={submitResume} data-testid="form-resume-run">
       <div className="panel-head"><div><h2 className="panel-title">Paste the advisory to continue</h2><p className="panel-subtitle">NVD could not provide this CVE record. This resumes the same run at the fetch step.</p></div><span className="eyebrow">Input needed</span></div>
       <label className="input-label" htmlFor="resume-advisory-input">Advisory text</label>
-      <textarea id="resume-advisory-input" className="input-control advisory-input" value={resumeText} onChange={(event) => { setResumeText(event.target.value); if (resumeError) setResumeError(''); }} maxLength={20000} placeholder="Paste the vendor advisory here" data-testid="input-resume-advisory" />
+      <textarea id="resume-advisory-input" className="input-control advisory-input" value={resumeText} onChange={(event) => { setResumeText(event.target.value); if (resumeError) setResumeError(''); }} placeholder="Paste the vendor advisory here" data-testid="input-resume-advisory" />
       <div className="resume-footer"><span className="field-hint">{resumeText.length.toLocaleString()} / 20,000 characters</span><button className="submit-button" type="submit" disabled={resumeInput.isPending || !resumeText.trim()} data-testid="button-resume-run">{resumeInput.isPending ? 'Resuming…' : 'Resume this run'}</button></div>
       {resumeError && <div className="error-box" role="alert" data-testid="status-resume-error">{resumeError}</div>}
     </form>}
-    <TraceGraph data={live} selectedSeq={selected} onSelect={(step) => setSelected((prev) => prev === step.seq ? null : step.seq)} connection={connection} retrying={retrying} retryRemainingMs={retryRemainingMs} localInterrupted={localInterrupted} />
+    {replaySource && <ReplayControls replay={replay} />}
+    {replay.frame && <div className="replay-tag" data-testid="status-replay">Replay view. The saved result is unchanged; press Show saved result to return.</div>}
+    <PathSummary steps={live.steps} />
+    <TraceGraph data={replay.frame ? replay.frame.data : live} selectedSeq={selected} onSelect={(step) => setSelected((prev) => prev === step.seq ? null : step.seq)} connection={replay.frame ? 'replay' : connection} retrying={replay.frame ? null : retrying} retryRemainingMs={retryRemainingMs} localInterrupted={replay.frame ? [] : localInterrupted} />
     <FaultsPanel faults={live.faults || []} />
     {(live.run.status === 'completed' || markdown) && <section className="brief-card">
       <div className="brief-head"><h2>Assessment brief</h2>{live.run.degraded && <span className="degraded-badge">Degraded output</span>}</div>
@@ -569,7 +597,7 @@ function useRunStream(id: string, initial: RunData | undefined) {
 function RunPage() {
   const params = useParams<{ id: string }>();
   const id = params.id || '';
-  const query = useGetRun(id, { query: { queryKey: getGetRunQueryKey(id), enabled: !!id, refetchOnWindowFocus: false } });
+  const query = useGetRun(id, { query: { queryKey: getGetRunQueryKey(id), enabled: !!id, refetchOnWindowFocus: false, refetchOnReconnect: false } });
   const stream = useRunStream(id, query.data);
   return <AppFrame><main className="page-wrap"><RunView initial={query.data || null} data={stream.data} isLoading={query.isLoading} error={query.isError} onRetry={() => void query.refetch()} connection={stream.connection} retrying={stream.attemptEvent} retryRemainingMs={stream.retryRemainingMs} localInterrupted={stream.localInterrupted} /></main></AppFrame>;
 }
@@ -589,7 +617,7 @@ function ArchitectureDiagram() {
       <rect className="arch-box primary" x="525" y="73" rx="5" width="155" height="62" /><text className="arch-title" x="547" y="101">Runner</text><text className="arch-sub" x="547" y="120">Five ordered steps</text>
       <rect className="arch-box external" x="710" y="73" rx="5" width="155" height="62" /><text className="arch-title" x="732" y="101">Advisory source</text><text className="arch-sub" x="732" y="120">Public vulnerability data</text>
       <rect className="arch-box" x="183" y="207" rx="5" width="155" height="62" /><text className="arch-title" x="205" y="235">Postgres</text><text className="arch-sub" x="205" y="254">Runs · step evidence</text>
-      <rect className="arch-box external" x="588" y="207" rx="5" width="155" height="62" /><text className="arch-title" x="610" y="235">LLM</text><text className="arch-sub" x="610" y="254">Assessment · brief</text>
+      <rect className="arch-box external" x="588" y="207" rx="5" width="155" height="62" /><text className="arch-title" x="610" y="235">LLM</text><text className="arch-sub" x="610" y="254">Pasted text · checklist</text>
     </svg>
     <div className="architecture-caption">
       <div className="caption-item"><strong>01 / Capture</strong><span>The browser submits an identifier or advisory with a fresh idempotency key.</span></div>
@@ -625,6 +653,7 @@ function Router() {
     <Route path="/" component={Home} />
     <Route path="/run/:id" component={RunPage} />
     <Route path="/how-it-works" component={HowItWorks} />
+    <Route path="/stack">{() => <AppFrame><StackPage /></AppFrame>}</Route>
     <Route component={NotFound} />
   </Switch></RoutedErrorBoundary>;
 }

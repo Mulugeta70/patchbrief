@@ -10,7 +10,7 @@ if (process.env.NODE_ENV === "production") {
 const schema = `patchbrief_test_${randomUUID().replaceAll("-", "")}`;
 try {
   await pool.query(`CREATE SCHEMA "${schema}"`);
-  for (const table of ["runs", "steps", "stack_items", "step_attempts", "run_faults"]) {
+  for (const table of ["runs", "steps", "stack_items", "stack_state", "step_attempts", "run_faults"]) {
     await pool.query(`CREATE TABLE "${schema}"."${table}" (LIKE public."${table}" INCLUDING ALL)`);
   }
   // LIKE does not copy foreign keys; mirror the production cascade constraints.
@@ -24,6 +24,8 @@ try {
     "src/patchbrief/reliability.test.ts",
     "src/patchbrief/worker.test.ts",
     "src/patchbrief/llm-limits.test.ts",
+    "src/patchbrief/pipeline-details.test.ts",
+    "../patchbrief-web/src/lib/replay.test.ts",
     "src/patchbrief/worker-integration.test.ts",
   ], {
     stdio: "inherit",

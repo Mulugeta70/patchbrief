@@ -15,12 +15,17 @@ import {
   getLatestRunWithSteps,
   getRunWithSteps,
   resumeRunWithInput,
+  listRecentRuns,
 } from "../patchbrief/db";
 import { subscribeToRun, type RunStreamEvent } from "../patchbrief/events";
 import { wakeWorkers } from "../patchbrief/recovery";
 import { runCreationRateLimit } from "../middlewares/runCreationRateLimit";
 
 const router: IRouter = Router();
+
+router.get("/runs", async (_req, res, next) => {
+  try { res.json(await listRecentRuns()); } catch (error) { next(error); }
+});
 
 router.post("/runs", runCreationRateLimit, async (req, res, next): Promise<void> => {
   const parsedHeader = CreateRunHeader.safeParse({

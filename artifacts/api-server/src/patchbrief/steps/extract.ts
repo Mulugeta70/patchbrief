@@ -246,8 +246,8 @@ function createFallback(advisory: Advisory, reason: string) {
     textDerivedAffected(advisory.description),
   );
   return {
-    output_summary:
-      "Extracted advisory facts from structured fields and explicit version ranges (fallback).",
+    output_summary: `Extracted ${affected.length} affected products (pasted text, rule-based fallback).`,
+    extraction_path: "rule_based_pasted",
     cve_id: sourceCveId(advisory),
     summary: advisory.description?.trim() || "No advisory description provided.",
     affected,
@@ -266,6 +266,23 @@ export function createExtractStep(
     async run(context) {
       const fetched = requirePriorOutput<FetchOutput>(context, "fetch");
       const advisory = fetched.advisory;
+      if (advisory.source === "nvd") {
+        return context.attempts.runLocal(async () => {
+          const extracted = extractedAdvisorySchema.parse({
+            cve_id: advisory.cve_id,
+            summary: advisory.description?.trim() || "No advisory description provided.",
+            affected: advisory.affected ?? [],
+            // NVD configurations identify affected versions, not fixed releases.
+            fixed_in: null,
+            cvss: advisory.cvss,
+          });
+          return {
+            ...extracted,
+            extraction_path: "nvd_structured",
+            output_summary: `Extracted ${extracted.affected.length} affected products (NVD structured fields, no LLM).`,
+          };
+        });
+      }
       if (context.llmDisabledReason) {
         return context.attempts.runLocal(async () =>
           createFallback(advisory, context.llmDisabledReason!));
@@ -321,7 +338,8 @@ export function createExtractStep(
         return createFallback(advisory, reason);
       }
       return {
-        output_summary: `Extracted ${extracted.affected.length} affected product entr${extracted.affected.length === 1 ? "y" : "ies"}.`,
+        output_summary: `Extracted ${extracted.affected.length} affected products (pasted text, LLM).`,
+        extraction_path: "llm_pasted",
         ...extracted,
       };
     },

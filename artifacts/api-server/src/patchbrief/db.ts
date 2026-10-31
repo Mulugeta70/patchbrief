@@ -13,19 +13,10 @@ import {
 import { publishAttempt, publishRunUpdate, publishStep } from "./events";
 import { withRunLock } from "./leases";
 import type { FaultInput } from "./faults";
-
-const placeholderStack = [
-  { name: "node", version: "18" },
-  { name: "express", version: "4.17.1" },
-  { name: "lodash", version: "4.17.20" },
-  { name: "postgres", version: "15" },
-] as const;
+import { seedExampleStack } from "./stackStore";
 
 export async function seedStackItems(): Promise<void> {
-  await db
-    .insert(stackItemsTable)
-    .values([...placeholderStack])
-    .onConflictDoNothing({ target: stackItemsTable.name });
+  await seedExampleStack();
 }
 
 export async function getStackItems(): Promise<
@@ -395,4 +386,8 @@ export async function getLatestRunWithSteps() {
 
   if (!run) return null;
   return getRunWithSteps(run.id);
+}
+
+export function listRecentRuns() {
+  return db.select().from(runsTable).orderBy(desc(runsTable.createdAt), desc(runsTable.id)).limit(10);
 }
