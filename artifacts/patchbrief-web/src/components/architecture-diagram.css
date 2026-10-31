@@ -8,11 +8,12 @@
 .pb-arch-frame-label { font:600 10px var(--app-font-mono); letter-spacing:.06em; text-transform:uppercase; fill:#5f7a72; }
 .pb-arch-title { font:600 13px system-ui, sans-serif; fill:#283436; }
 .pb-arch-sub { font:11px system-ui, sans-serif; fill:#788181; }
-.pb-arch-label { font:11px var(--app-font-mono); fill:#55625f; }
+.pb-arch-label { font:12px var(--app-font-mono); fill:#55625f; }
+.pb-arch-label-bg { fill:hsl(var(--card)); }
 .pb-arch-line { stroke:#728581; stroke-width:1.4; fill:none; }
 .pb-arch-head { fill:#728581; }
 .pb-arch-note { margin:14px 0 0; font-size:12px; line-height:1.55; color:hsl(var(--muted-foreground)); }
-@media (max-width:640px) {
+@media (max-width:1024px) {
   .pb-arch { padding:16px 12px; }
   .pb-arch-svg.desktop { display:none; }
   .pb-arch-svg.mobile { display:block; }

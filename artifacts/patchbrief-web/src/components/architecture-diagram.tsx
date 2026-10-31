@@ -16,52 +16,61 @@ function Marker({ id }: { id: string }) {
   </marker>;
 }
 
+function VerticalArrow({ x, from, to, label }: { x: number; from: number; to: number; label: string }) {
+  const middle = (from + to) / 2;
+  const width = label.length * 7.5 + 20;
+  return <g>
+    <line className="pb-arch-line" x1={x} y1={from} x2={x} y2={to} markerEnd="url(#pb-arch-head-m)" />
+    <rect className="pb-arch-label-bg" x={x - width / 2} y={middle - 12} width={width} height={24} />
+    <text className="pb-arch-label" x={x} y={middle} textAnchor="middle" dominantBaseline="middle">{label}</text>
+  </g>;
+}
+
 export function ArchitectureDiagram() {
-  const label = 'Browser calls the API server over REST and SSE. The API server starts a run on the runner, which executes inside the server process. The API server reads run state from Postgres; the runner writes step evidence to Postgres, fetches CVEs from the NVD advisory source, and calls the LLM.';
+  const label = 'Browser calls the API server over HTTP and receives events. The API server starts a run on the runner, which executes inside the server process. The API server reads run state from Postgres; the runner writes step evidence to Postgres, fetches CVEs from the NVD advisory source, and prompts the optional LLM, which is off without a key.';
   return <div className="pb-arch" data-testid="diagram-architecture">
-    <svg className="pb-arch-svg desktop" viewBox="0 0 900 310" role="img" aria-label={label}>
+    <svg className="pb-arch-svg desktop" viewBox="0 0 1100 340" role="img" aria-label={label}>
       <defs><Marker id="pb-arch-head-d" /></defs>
-      <rect className="pb-arch-frame" x="250" y="30" width="440" height="130" rx="6" />
-      <text className="pb-arch-frame-label" x="264" y="50">Server process</text>
-      <line className="pb-arch-line" x1="170" y1="102" x2="270" y2="102" markerEnd="url(#pb-arch-head-d)" />
-      <text className="pb-arch-label" x="220" y="90" textAnchor="middle">REST / SSE</text>
-      <line className="pb-arch-line" x1="420" y1="102" x2="520" y2="102" markerEnd="url(#pb-arch-head-d)" />
-      <text className="pb-arch-label" x="470" y="90" textAnchor="middle">starts run</text>
-      <line className="pb-arch-line" x1="670" y1="102" x2="760" y2="102" markerEnd="url(#pb-arch-head-d)" />
-      <text className="pb-arch-label" x="725" y="90" textAnchor="middle">prompts</text>
-      <line className="pb-arch-line" x1="345" y1="134" x2="345" y2="230" markerEnd="url(#pb-arch-head-d)" />
-      <text className="pb-arch-label" x="353" y="196">reads state</text>
-      <line className="pb-arch-line" x1="540" y1="134" x2="540" y2="230" markerEnd="url(#pb-arch-head-d)" />
-      <text className="pb-arch-label" x="548" y="196">writes</text>
-      <line className="pb-arch-line" x1="650" y1="134" x2="650" y2="230" markerEnd="url(#pb-arch-head-d)" />
-      <text className="pb-arch-label" x="658" y="196">fetch CVE</text>
-      <Box x={20} y={70} w={150} h={64} title="Browser" sub="Review UI · live trace" />
-      <Box x={270} y={70} w={150} h={64} title="API server" sub="Runs · events" kind="core" />
-      <Box x={520} y={70} w={150} h={64} title="Runner" sub="Five ordered steps" kind="core" />
-      <Box x={760} y={70} w={125} h={64} title="LLM" sub="Extract · wording" kind="ext" />
-      <Box x={270} y={230} w={290} h={64} title="Postgres" sub="Runs · steps · attempts · evidence" />
-      <Box x={620} y={230} w={170} h={64} title="NVD advisory source" sub="Public CVE data" kind="ext" />
+      <rect className="pb-arch-frame" x="314" y="28" width="484" height="140" rx="6" />
+      <text className="pb-arch-frame-label" x="328" y="49">Server process</text>
+      <line className="pb-arch-line" x1="176" y1="110" x2="326" y2="110" markerEnd="url(#pb-arch-head-d)" />
+      <text className="pb-arch-label" x="251" y="92" textAnchor="middle">HTTP + events</text>
+      <line className="pb-arch-line" x1="486" y1="110" x2="626" y2="110" markerEnd="url(#pb-arch-head-d)" />
+      <text className="pb-arch-label" x="556" y="92" textAnchor="middle">starts run</text>
+      <line className="pb-arch-line" x1="786" y1="110" x2="906" y2="110" markerEnd="url(#pb-arch-head-d)" />
+      <text className="pb-arch-label" x="846" y="92" textAnchor="middle">prompts</text>
+      <line className="pb-arch-line" x1="406" y1="142" x2="406" y2="258" markerEnd="url(#pb-arch-head-d)" />
+      <text className="pb-arch-label" x="418" y="200" dominantBaseline="middle">reads state</text>
+      <line className="pb-arch-line" x1="666" y1="142" x2="666" y2="258" markerEnd="url(#pb-arch-head-d)" />
+      <text className="pb-arch-label" x="678" y="200" dominantBaseline="middle">writes</text>
+      <line className="pb-arch-line" x1="766" y1="142" x2="766" y2="258" markerEnd="url(#pb-arch-head-d)" />
+      <text className="pb-arch-label" x="778" y="200" dominantBaseline="middle">fetch CVE</text>
+      <Box x={16} y={78} w={160} h={64} title="Browser" sub="Review UI · live trace" />
+      <Box x={326} y={78} w={160} h={64} title="API server" sub="Runs · events" kind="core" />
+      <Box x={626} y={78} w={160} h={64} title="Runner" sub="Five ordered steps" kind="core" />
+      <Box x={906} y={78} w={180} h={64} title="LLM" sub="optional, off without a key" kind="ext" />
+      <Box x={326} y={258} w={360} h={64} title="Postgres" sub="Runs · steps · attempts · evidence" />
+      <Box x={746} y={258} w={180} h={64} title="NVD advisory source" sub="Public CVE data" kind="ext" />
     </svg>
-    <svg className="pb-arch-svg mobile" viewBox="0 0 320 420" role="img" aria-label={label}>
+    <svg className="pb-arch-svg mobile" viewBox="0 0 344 900" role="img" aria-label={label}>
       <defs><Marker id="pb-arch-head-m" /></defs>
-      <rect className="pb-arch-frame" x="20" y="92" width="280" height="200" rx="6" />
-      <text className="pb-arch-frame-label" x="30" y="110">Server process</text>
-      <line className="pb-arch-line" x1="160" y1="60" x2="160" y2="120" markerEnd="url(#pb-arch-head-m)" />
-      <text className="pb-arch-label" x="168" y="84">REST / SSE</text>
-      <line className="pb-arch-line" x1="160" y1="170" x2="160" y2="214" markerEnd="url(#pb-arch-head-m)" />
-      <text className="pb-arch-label" x="168" y="197">starts run</text>
-      <line className="pb-arch-line" x1="70" y1="264" x2="70" y2="350" markerEnd="url(#pb-arch-head-m)" />
-      <text className="pb-arch-label" x="76" y="322">writes</text>
-      <line className="pb-arch-line" x1="160" y1="264" x2="160" y2="350" markerEnd="url(#pb-arch-head-m)" />
-      <text className="pb-arch-label" x="166" y="322">fetch</text>
-      <line className="pb-arch-line" x1="250" y1="264" x2="250" y2="350" markerEnd="url(#pb-arch-head-m)" />
-      <text className="pb-arch-label" x="256" y="322">calls</text>
-      <Box x={40} y={10} w={240} h={50} title="Browser" sub="Review UI · live trace" />
-      <Box x={40} y={120} w={240} h={50} title="API server" sub="Runs · events · reads Postgres" kind="core" />
-      <Box x={40} y={214} w={240} h={50} title="Runner" sub="Five ordered steps" kind="core" />
-      <Box x={4} y={350} w={100} h={60} title="Postgres" sub="Evidence" />
-      <Box x={110} y={350} w={100} h={60} title="NVD" sub="Advisories" kind="ext" />
-      <Box x={216} y={350} w={100} h={60} title="LLM" sub="Wording" kind="ext" />
+      <rect className="pb-arch-frame" x="4" y="144" width="324" height="260" rx="6" />
+      <text className="pb-arch-frame-label" x="64" y="158">Server process</text>
+      <VerticalArrow x={170} from={70} to={170} label="HTTP + events" />
+      <VerticalArrow x={170} from={230} to={330} label="starts run" />
+      <VerticalArrow x={170} from={390} to={490} label="writes" />
+      <path className="pb-arch-line" d="M112,230 V280 H12 V520 H50" markerEnd="url(#pb-arch-head-m)" />
+      <text className="pb-arch-label" x="62" y="264" textAnchor="middle">reads state</text>
+      <path className="pb-arch-line" d="M220,390 V440 H312 V680 H290" markerEnd="url(#pb-arch-head-m)" />
+      <text className="pb-arch-label" x="266" y="424" textAnchor="middle">fetch CVE</text>
+      <path className="pb-arch-line" d="M290,360 H332 V760 H170 V810" markerEnd="url(#pb-arch-head-m)" />
+      <text className="pb-arch-label" x="251" y="744" textAnchor="middle">prompts</text>
+      <Box x={50} y={10} w={240} h={60} title="Browser" sub="Review UI · live trace" />
+      <Box x={50} y={170} w={240} h={60} title="API server" sub="Runs · events" kind="core" />
+      <Box x={50} y={330} w={240} h={60} title="Runner" sub="Five ordered steps" kind="core" />
+      <Box x={50} y={490} w={240} h={60} title="Postgres" sub="Runs · steps · evidence" />
+      <Box x={50} y={650} w={240} h={60} title="NVD advisory source" sub="Public CVE data" kind="ext" />
+      <Box x={50} y={810} w={240} h={76} title="LLM" sub="optional, off without a key" kind="ext" />
     </svg>
   </div>;
 }
