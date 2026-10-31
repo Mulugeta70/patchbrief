@@ -13,6 +13,7 @@ export default function StackPage() {
   const [candidate, setCandidate] = useState('');
   const [checking, setChecking] = useState(false);
   const [unlockError, setUnlockError] = useState('');
+  const [storageNotice, setStorageNotice] = useState('');
   const headers: Record<string, string> = editKey ? { Authorization: `Bearer ${editKey}` } : {};
   const add = useAddStackItem({ request: { headers } });
   const del = useDeleteStackItem({ request: { headers } });
@@ -25,6 +26,7 @@ export default function StackPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: getListStackItemsQueryKey() });
   const lock = () => {
     setEditKey('');
+    setStorageNotice('');
     try { window.sessionStorage.removeItem(STACK_EDIT_SESSION_KEY); } catch { /* Remain read-only. */ }
   };
   const verify = (key: string) => unlockStackEditing({ headers: { Authorization: `Bearer ${key}` } });
@@ -42,7 +44,7 @@ export default function StackPage() {
         if (!saved) return;
         setChecking(true);
         await verify(saved);
-        if (active) setEditKey(saved);
+        if (active) { setEditKey(saved); await refresh(); }
       } catch (failure) {
         try { window.sessionStorage.removeItem(STACK_EDIT_SESSION_KEY); } catch { /* Remain read-only. */ }
         if (active) setUnlockError(message(failure, 'The editing key could not be checked.'));
@@ -56,7 +58,11 @@ export default function StackPage() {
     setChecking(true); setUnlockError('');
     try {
       const accepted = await verifyAndStoreStackKey(window.sessionStorage, candidate, verify);
-      setEditKey(accepted); setCandidate('');
+      setEditKey(accepted.key); setCandidate('');
+      setStorageNotice(accepted.persisted ? '' : 'Editing is unlocked for this page only. Browser session storage is unavailable; unlock again after leaving this page.');
+      setError(''); setDeleteError('');
+      add.reset(); del.reset();
+      await refresh();
     } catch (failure) {
       setUnlockError(message(failure, 'Editing could not be unlocked. Check the key and try again.'));
       setCandidate('');
@@ -93,6 +99,7 @@ export default function StackPage() {
         <button type="submit" className="copy-button" disabled={checking || !candidate.trim()} data-testid="button-unlock-stack">{checking ? 'Checking…' : 'Unlock'}</button>
       </form>}
     {unlockError && <div id="stack-unlock-error" className="error-box" role="alert">{unlockError}</div>}
+    {storageNotice && <p className="field-hint" role="status">{storageNotice}</p>}
     {editKey && <form className="form-panel stack-form" onSubmit={submit} data-testid="form-add-stack">
       <label><span className="input-label">Name</span><input className="input-control" value={name} onChange={(e) => { setName(e.target.value); setError(''); }} placeholder="lodash" data-testid="input-stack-name" /></label>
       <label><span className="input-label">Version</span><input className="input-control" value={version} onChange={(e) => { setVersion(e.target.value); setError(''); }} placeholder="4.17.20" data-testid="input-stack-version" /></label>

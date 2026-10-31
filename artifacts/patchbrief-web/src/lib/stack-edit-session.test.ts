@@ -10,7 +10,7 @@ test('editing key is written to session storage only after server acceptance', a
     calls.push('stored');
   } };
   const accepted = await verifyAndStoreStackKey(storage, 'test-key', async () => { calls.push('accepted'); });
-  assert.equal(accepted, 'test-key');
+  assert.deepEqual(accepted, { key: 'test-key', persisted: true });
   assert.deepEqual(calls, ['accepted', 'stored']);
 });
 

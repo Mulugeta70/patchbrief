@@ -12,6 +12,12 @@ export async function verifyAndStoreStackKey(
 ) {
   const key = candidate.trim();
   await verify(key);
-  storage.setItem(STACK_EDIT_SESSION_KEY, key);
-  return key;
+  try {
+    storage.setItem(STACK_EDIT_SESSION_KEY, key);
+    return { key, persisted: true };
+  } catch {
+    // A browser storage failure must not turn server acceptance into a failed
+    // unlock. Keep the accepted key in component memory and disclose the limit.
+    return { key, persisted: false };
+  }
 }

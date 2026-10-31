@@ -2,3 +2,4 @@
 - [Cleanup scope](cleanup-scope.md) — brief and trace cleanup must not change retry, lease or recovery logic.
 - [History visibility](history-visibility.md) — browser-local home history is not authentication; public replay by ID is intentional.
 - [Intentional no-LLM mode](no-llm-mode.md) — missing keys or budgets are normal processing, not degradation; failures require an attempted LLM call.
+- [Owner editing sessions](owner-editing-sessions.md) — accepted credentials allow page-only editing if browser storage fails; distinguish persistence from authentication.
