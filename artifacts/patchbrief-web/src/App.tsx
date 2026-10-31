@@ -147,13 +147,13 @@ function Home() {
       { data: { input: value, ...(faults.length ? { faults } : {}), ...(slowMode ? { slowMode: true } : {}) } },
       {
         onSuccess: (result) => {
+          setInput('');
           try {
             rememberBrowserRun(window.localStorage, result.run.id);
             window.dispatchEvent(new Event(BROWSER_RUNS_CHANGED));
           } catch {
             window.alert('The run was created, but this browser could not save it in Recent runs. Keep the replay link to return to it.');
           }
-          setInput('');
           setLocation(`/run/${encodeURIComponent(result.run.id)}`);
         },
         onError: (failure) => setInputError((failure as { data?: { error?: string } })?.data?.error === RUN_INPUT_ERROR
@@ -175,7 +175,11 @@ function Home() {
           </div>
           <label className="input-label" htmlFor="advisory-input">CVE ID or advisory</label>
           <textarea id="advisory-input" className="input-control advisory-input" value={input} aria-invalid={!!inputError || input.length > MAX_INPUT} aria-describedby={inputError ? 'run-input-error' : undefined} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\nor paste the vendor advisory here'} data-testid="input-advisory" />
-          <p className={`field-hint ${input.length > MAX_INPUT ? 'over' : ''}`} data-testid="text-input-count">The supplied text is the source material. {input.length.toLocaleString()} / 20,000 characters.{input.length > MAX_INPUT ? ' Over the limit; shorten before submitting.' : ''} Your draft is kept in this tab.</p>
+          <div className="draft-controls">
+            <p className={`field-hint ${input.length > MAX_INPUT ? 'over' : ''}`} data-testid="text-input-count">The supplied text is the source material. {input.length.toLocaleString()} / 20,000 characters.{input.length > MAX_INPUT ? ' Over the limit; shorten before submitting.' : ''} Your draft is kept in this tab.</p>
+            <button type="button" className="copy-button" disabled={createRun.isPending}
+              onClick={() => { setInput(''); setInputError(''); }} data-testid="button-clear-draft">Clear</button>
+          </div>
           <BreakItPanel faults={faults} setFaults={setFaults} slowMode={slowMode} setSlowMode={setSlowMode} input={input} />
           {inputError && <div id="run-input-error" className="error-box" role="alert" data-testid="status-submit-error">{inputError}</div>}
           <button className="submit-button" type="submit" disabled={createRun.isPending} data-testid="button-submit-run">

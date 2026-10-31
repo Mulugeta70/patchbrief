@@ -85,7 +85,7 @@ export default function StackPage() {
       <p>The software and versions the assess step checks advisories against.</p>
     </div></div>
     <div className="shared-note" data-testid="text-shared-note">This is the list the app checks advisories against. Only the owner can edit it.</div>
-    {editKey ? <div className="stack-edit-controls"><span>Editing unlocked for this tab</span><button type="button" className="nav-link" onClick={lock}>Lock editing</button></div>
+    {editKey ? <div className="stack-edit-controls"><span>Editing unlocked for this tab</span><button type="button" className="nav-link" onClick={lock} data-testid="button-lock-stack">Lock</button></div>
       : <form className="stack-unlock" onSubmit={(event) => { void unlock(event); }} data-testid="form-unlock-stack">
         <label><span className="input-label">Unlock editing</span><input type="password" className="input-control" value={candidate}
           autoComplete="current-password" onChange={(event) => { setCandidate(event.target.value); setUnlockError(''); }}
