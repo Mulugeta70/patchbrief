@@ -61,7 +61,7 @@ test("all step summaries report actual counts and the brief records processing p
   const brief = await briefStep.run(ctx);
   const markdown = String(brief.markdown);
   assert.equal(brief.output_summary, `Brief: ${markdown.trim().split(/\s+/).length} words.`);
-  assert.match(markdown, /Extraction: NVD structured fields \(no LLM\)/);
+  assert.match(markdown, /Extraction: NVD fields, no LLM/);
   assert.match(markdown, /Checklist: LLM wording/);
 });
 

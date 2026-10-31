@@ -16,13 +16,18 @@ export function versionEvidence(advisory: Advisory, extracted: Record<string, un
   if (advisory.source === "nvd") {
     const products = advisory.affected ?? [];
     const hasRanges = products.some((p) => p.versions.length > 0);
+    const boundaries = new Map<string, Set<string>>();
+    for (const { product, version } of advisory.excluded_upper_bounds ?? []) {
+      if (!boundaries.has(product)) boundaries.set(product, new Set());
+      boundaries.get(product)!.add(version);
+    }
     return {
       affected: hasRanges
         ? products.map((p) => `- ${p.product}: ${p.versions.join(" OR ") || "versions not specified"} (NVD configuration)`).join("\n")
         : `NVD has no affected-version data yet. Check the vendor advisory.${vendorLink}`,
-      fixed: advisory.excluded_upper_bounds?.length
-        ? advisory.excluded_upper_bounds.map((b) =>
-          `- ${b.product}: fixed release not confirmed. NVD's affected range excludes ${b.version} at its upper boundary; verify the vendor's fixed release.`).join("\n")
+      fixed: boundaries.size
+        ? [...boundaries].map(([product, versions]) =>
+          `- ${product}: ${[...versions].join(", ")} ${versions.size === 1 ? "is the first version" : "are the first versions"} outside NVD's affected range. This does not confirm a fix, so check the vendor advisory.`).join("\n")
         : `NVD configuration data does not confirm a fixed release. Check the vendor advisory.${vendorLink}`,
     };
   }

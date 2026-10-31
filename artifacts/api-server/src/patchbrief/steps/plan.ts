@@ -78,11 +78,9 @@ export function createPlanStep(
       const assessment = requirePriorOutput<AssessOutput>(context, "assess");
       const extracted = requirePriorOutput<ExtractOutput>(context, "extract");
       if (assessment.affected_items.length === 0) {
-        const count = assessment.affected_items.length + (assessment.not_affected_items?.length ?? 0) + assessment.undetermined_items.length;
-        const note = `None of the ${count} items in My stack matched. This only covers software you have listed.${
-          assessment.undetermined_items.length ? " Some version comparisons are inconclusive; check the vendor advisory." : ""}`;
+        const note = "Nothing to patch from your current list. Add other software you run to My stack and rerun.";
         return context.attempts.runLocal(async () => ({
-          output_summary: "Wrote 1 no-action checklist note (no LLM).",
+          output_summary: "Wrote 1 no-match note (no LLM).",
           wording_path: "no_action",
           checklist: [note],
         }));

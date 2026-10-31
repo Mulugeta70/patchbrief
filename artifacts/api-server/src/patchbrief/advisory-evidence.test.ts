@@ -60,7 +60,7 @@ test("NVD affected versions and excluded boundaries reach the brief without inve
   assert.equal(context.priorOutputs.extract?.fixed_in, null);
   const markdown = String(brief.markdown);
   assert.match(markdown, /## Affected versions\n- lodash: >=4.0.0 <4.17.21 \(NVD configuration\)/);
-  assert.match(markdown, /## Fixed in\n- lodash: fixed release not confirmed.*excludes 4.17.21/);
+  assert.match(markdown, /## Fixed in\n- lodash: 4.17.21 is the first version outside NVD's affected range. This does not confirm a fix/);
   assert.match(markdown, /CVSS v4.0 9.2 \(CNA\)/);
   assert.match(markdown, /Other CVSS scores: CVSS v3.1 8.1 \(NVD\); CVSS v3.1 9.8 \(CNA\)/);
   assert.match(String(brief.team_message), /CVSS v4.0 9.2 \(CNA\)/);
@@ -83,10 +83,32 @@ test("no-match wording states the exact saved stack count, including an empty st
     const stack = Array.from({ length: count }, (_, i) => ({ name: `my-software-${i}`, version: "1.0.0" }));
     const { context, brief } = await makeBrief(configuration, stack);
     const note = `None of the ${count} items in My stack matched. This only covers software you have listed.`;
-    assert.deepEqual(context.priorOutputs.plan?.checklist, [note]);
+    const checklist = "Nothing to patch from your current list. Add other software you run to My stack and rerun.";
+    assert.deepEqual(context.priorOutputs.plan?.checklist, [checklist]);
     assert.ok(String(brief.markdown).includes(note));
+    assert.equal(String(brief.markdown).split(note).length - 1, 1);
+    assert.match(String(brief.markdown), /## Remediation checklist\n- Nothing to patch from your current list/);
+    assert.equal(String(brief.team_message).split("\n")[2], checklist);
+    assert.equal(String(brief.markdown).includes("# PatchBrief"), false);
+    assert.match(String(brief.markdown), /Extraction: NVD fields, no LLM. Checklist: No-match note/);
     assert.equal(String(brief.markdown).includes("No action needed for the tracked stack items"), false);
   }
+});
+
+test("Fixed in groups every excluded boundary by product without repeating the qualification", async () => {
+  const versions = ["8.2.35", "8.3.36", "8.4.27", "8.5.12", "8.2.35"];
+  const { brief } = await makeBrief([{ nodes: [{ cpeMatch: [
+    ...versions.map((version) => ({
+      vulnerable: true, criteria: "cpe:2.3:a:php:php:*:*:*:*:*:*:*:*",
+      versionEndExcluding: version,
+    })),
+    { vulnerable: true, criteria: "cpe:2.3:a:vendor:other:*:*:*:*:*:*:*:*", versionEndExcluding: "2.0.0" },
+  ] }] }]);
+  const fixed = String(brief.markdown).split("## Fixed in\n")[1]!.split("\n\n##")[0]!;
+  assert.match(fixed, /php: 8.2.35, 8.3.36, 8.4.27, 8.5.12 are the first versions outside NVD's affected range/);
+  assert.equal(fixed.match(/- php:/g)?.length, 1);
+  assert.equal(fixed.match(/This does not confirm a fix/g)?.length, 2);
+  assert.match(fixed, /other: 2.0.0 is the first version/);
 });
 
 test("pasted CVSS scores retain explicit versions and label missing versions honestly", async () => {

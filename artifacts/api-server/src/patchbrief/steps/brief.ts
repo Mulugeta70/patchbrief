@@ -50,7 +50,7 @@ export const briefStep: PipelineStep = {
       const plan = requirePriorOutput<PlanOutput>(context, "plan");
       const extracted = requirePriorOutput<Record<string, unknown>>(context, "extract");
       const extractionPath = extracted.extraction_path === "nvd_structured"
-        ? "NVD structured fields (no LLM)"
+        ? "NVD fields, no LLM"
         : extracted.extraction_path === "llm_pasted"
           ? "Pasted advisory text (LLM)"
           : extracted.extraction_path === "rule_based_pasted"
@@ -58,7 +58,7 @@ export const briefStep: PipelineStep = {
             : "Not recorded in this saved run";
       const checklistPath = plan.wording_path === "llm" ? "LLM wording"
         : plan.wording_path === "rule_based" ? "Rule-based fallback"
-          : plan.wording_path === "no_action" ? "No-action note (no LLM)" : "Not recorded in this saved run";
+          : plan.wording_path === "no_action" ? "No-match note" : "Not recorded in this saved run";
       const advisory = fetched.advisory;
       const summary = advisory.description?.trim() || "No advisory description provided.";
       const scores = scoresForAdvisory(advisory, assessment.cvss);
@@ -72,7 +72,9 @@ export const briefStep: PipelineStep = {
               .map((item) => `${item.name} ${item.version}`)
               .join(", ")}.`
           : "";
-      const checklist = plan.checklist.map((item) => `- ${item}`).join("\n");
+      const noMatchNote = "Nothing to patch from your current list. Add other software you run to My stack and rerun.";
+      const checklist = (assessment.affected_items.length ? plan.checklist : [noMatchNote])
+        .map((item) => `- ${item}`).join("\n");
       const references =
         advisory.references && advisory.references.length > 0
           ? advisory.references.map((reference) => `- ${reference}`).join("\n")
@@ -85,8 +87,6 @@ export const briefStep: PipelineStep = {
         : "No.";
 
       const markdown = [
-        "# PatchBrief",
-        "",
         "## Summary",
         summary,
         published,
@@ -127,11 +127,12 @@ export const briefStep: PipelineStep = {
             ? `none confirmed; comparison inconclusive for ${assessment.undetermined_items
                 .map((item) => item.name)
                 .join(", ")}`
-            : `none of ${stackCount} listed items matched; this only covers software you have listed`;
+            : "none matched";
       const teamMessage = [
         `${advisory.cve_id ?? "Advisory"}: ${assessment.severity} (${cvssLabel}).`,
         `Affected tracked stack items: ${affectedLabel}.`,
-        `Remediation: ${plan.checklist[0] ?? "Check the vendor advisory."}`,
+        assessment.affected_items.length === 0 ? noMatchNote
+          : `Remediation: ${plan.checklist[0] ?? "Check the vendor advisory."}`,
       ].join("\n");
 
       return {

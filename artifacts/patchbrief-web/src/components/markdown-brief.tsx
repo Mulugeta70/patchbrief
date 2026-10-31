@@ -1,5 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { LinkedText, ReferenceList } from './advisory-evidence';
+import { AffectedRanges } from './affected-ranges';
+import { parseAffectedRanges } from '../lib/version-presentation';
 
 export function MarkdownBrief({ content }: { content: string }) {
   const blocks = useMemo(() => {
@@ -12,6 +14,7 @@ export function MarkdownBrief({ content }: { content: string }) {
       if (heading) {
         const text = heading[2];
         const key = i++;
+        if (heading[1].length === 1 && text === 'PatchBrief') continue;
         result.push(heading[1].length === 1 ? <h1 key={key}>{text}</h1>
           : heading[1].length === 2 ? <h2 key={key}>{text}</h2> : <h3 key={key}>{text}</h3>);
         if (text.toLowerCase() === 'references') {
@@ -21,6 +24,20 @@ export function MarkdownBrief({ content }: { content: string }) {
             if (reference) references.push(reference);
           }
           result.push(<ReferenceList key={`refs-${key}`} references={references} />);
+        }
+        if (text.toLowerCase() === 'affected versions') {
+          const versionLines: string[] = [];
+          let end = i;
+          while (end < lines.length && !/^#{1,3}\s/.test(lines[end])) {
+            if (lines[end].trim()) versionLines.push(lines[end]);
+            end++;
+          }
+          const products = versionLines.length ? parseAffectedRanges(versionLines) : null;
+          if (products) {
+            result.push(<ul key={`ranges-${key}`}>{products.map((product) =>
+              <AffectedRanges key={`${product.product}:${product.source}`} {...product} />)}</ul>);
+            i = end;
+          }
         }
         continue;
       }

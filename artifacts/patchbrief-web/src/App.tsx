@@ -10,7 +10,8 @@ import { ReplayControls, useReplay } from '@/components/replay-controls';
 import { describeApiError } from '@/lib/api-errors';
 import { CvssScores } from '@/components/advisory-evidence';
 import { MarkdownBrief } from '@/components/markdown-brief';
-import { presentSavedBrief, labelSavedText } from '@/lib/brief-presentation';
+import { presentSavedBrief, presentTeamMessage } from '@/lib/brief-presentation';
+import { processingPathLabel } from '@/lib/version-presentation';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import {
   getGetLatestRunQueryKey, getGetRunQueryKey, getListRecentRunsQueryKey, getRun, useCreateRun, useGetLatestRun, useGetRun, useSubmitRunInput,
@@ -310,7 +311,7 @@ function TraceGraph({ data, onSelect, selectedSeq, connection, retrying, retryRe
             <text className="svg-seq" x={centers[index]} y="43">{String(step.seq).padStart(2, '0')}</text>
             <text className="svg-name" x={centers[index]} y="82">{label}</text>
             <text className={`svg-status ${statusClass(status)}`} x={centers[index]} y="103">{statusText(status)}</text>
-            <text className="svg-meta" x={centers[index]} y="125">{step.attempt > 1 ? `attempt ${step.attempt} · ` : ''}{formatDuration(step.durationMs)}{count ? ` · ${count} log` : ''}</text>
+            <text className="svg-meta" x={centers[index]} y="125">{formatDuration(step.durationMs)}{count ? ` · ${count} attempt${count === 1 ? '' : 's'}` : ''}</text>
             <text className="svg-summary" x={centers[index]} y="151">{summaryLines(summary).map((line, lineIndex) => <tspan key={lineIndex} x={centers[index]} dy={lineIndex ? 14 : 0}>{line}</tspan>)}</text>
             {interrupt !== 'none' && <text className={`interrupt-text ${interrupt}`} x={centers[index] - 26} y="220" data-testid={`status-interrupt-${step.name}`}>{interrupt === 'recovered' ? 'interrupted / recovered' : 'interrupted'}</text>}
           </g>;
@@ -338,7 +339,7 @@ function pathOf(step?: Step): string {
   const o = step?.output as Record<string, unknown> | null | undefined;
   if (!o) return '';
   const v = o.extraction_path ?? o.wording_path;
-  return typeof v === 'string' ? v : '';
+  return typeof v === 'string' ? processingPathLabel(v) : '';
 }
 function PathSummary({ steps }: { steps: Step[] }) {
   const extract = pathOf(steps.find((s) => s.name === 'extract'));
@@ -388,7 +389,7 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
   const finalBrief = live.steps.find((step) => step.name === 'brief')?.output;
   const markdown = typeof finalBrief?.markdown === 'string' ? finalBrief.markdown : typeof finalBrief?.brief === 'string' ? finalBrief.brief : '';
   const teamValue = finalBrief?.team_message;
-  const teamMessage = labelSavedText(typeof teamValue === 'string' ? teamValue : Array.isArray(teamValue) ? teamValue.filter((line): line is string => typeof line === 'string').join('\n') : '', live.steps);
+  const teamMessage = presentTeamMessage(typeof teamValue === 'string' ? teamValue : Array.isArray(teamValue) ? teamValue.filter((line): line is string => typeof line === 'string').join('\n') : '', live.steps);
   const statusClass = live.run.status === 'completed' ? 'complete' : live.run.status === 'failed' ? 'failed' : live.run.status === 'needs_input' ? 'needs-input' : '';
   const submitResume = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -430,12 +431,11 @@ function RunView({ initial, data, isLoading, error, onRetry, showId = true, conn
   return <div className="run-content">
     <div className="page-heading">
       <div>
-        <div className="eyebrow">Vulnerability assessment</div>
         <h1>{live.run.input.length > 70 ? `${live.run.input.slice(0, 70)}…` : live.run.input}</h1>
         <p>{connection === 'replay' ? 'Saved replay of a finished run' : 'Live review trace and evidence summary'}</p>
         <div className="status-line">
           <span className={`live-dot ${statusClass}`} />
-          <span data-testid="status-run">{live.run.status === 'completed' ? 'Review complete' : live.run.status === 'failed' ? 'Review failed' : live.run.status === 'needs_input' ? 'Needs advisory input' : live.run.status === 'queued' ? 'Queued for a worker' : 'Review in progress'}</span>
+          <span data-testid="status-run">{live.run.status === 'completed' ? 'Run complete' : live.run.status === 'failed' ? 'Review failed' : live.run.status === 'needs_input' ? 'Needs advisory input' : live.run.status === 'queued' ? 'Queued for a worker' : 'Review in progress'}</span>
           {live.run.degraded && <span className="degraded-badge">Degraded</span>}
           {live.run.resumeCount > 1 && <span className="resumed-badge" data-testid="badge-resumed">Resumed · count {live.run.resumeCount}</span>}
           {live.run.slowMode && <span className="slow-badge" data-testid="badge-slow-mode">Slow mode / artificial 1.5s delay between steps</span>}
