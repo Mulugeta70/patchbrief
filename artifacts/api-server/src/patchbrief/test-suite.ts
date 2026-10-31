@@ -27,6 +27,7 @@ try {
     "src/patchbrief/pipeline-details.test.ts",
     "src/patchbrief/advisory-evidence.test.ts",
     "src/patchbrief/stack-edit-guard.test.ts",
+    "src/patchbrief/run-input.test.ts",
     "../patchbrief-web/src/lib/replay.test.ts",
     "../patchbrief-web/src/lib/brief-presentation.test.ts",
     "../patchbrief-web/src/lib/browser-runs.test.ts",

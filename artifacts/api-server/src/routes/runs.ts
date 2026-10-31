@@ -9,6 +9,8 @@ import {
   SubmitRunInputBody,
   SubmitRunInputParams,
   StreamRunEventsParams,
+  isValidRunInput,
+  RUN_INPUT_ERROR,
 } from "@workspace/api-zod";
 import {
   createRun,
@@ -42,6 +44,10 @@ router.post("/runs", runCreationRateLimit, async (req, res, next): Promise<void>
       : undefined;
   if (typeof rawInput === "string" && rawInput.length > 20_000) {
     res.status(413).json({ error: "Input must be 20,000 characters or fewer." });
+    return;
+  }
+  if (!isValidRunInput(rawInput)) {
+    res.status(400).json({ error: RUN_INPUT_ERROR });
     return;
   }
 

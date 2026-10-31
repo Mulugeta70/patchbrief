@@ -174,6 +174,44 @@ test("sequential and simultaneous POSTs with one idempotency key create exactly 
   }
 });
 
+test("rejected input creates no runs or daily-cap usage and the same key can submit corrected text", async () => {
+  const { request } = await import("node:http");
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/runs`;
+  const key = `validation-${randomUUID()}`;
+  const post = (input: string) => new Promise<{ status: number; body: Record<string, any> }>((resolve, reject) => {
+    const req = request(url, { method: "POST", localAddress: "127.0.0.2",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": key } }, (res) => {
+      let text = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => { text += chunk; });
+      res.on("end", () => { resolve({ status: res.statusCode!, body: JSON.parse(text) }); });
+    });
+    req.on("error", reject);
+    req.end(JSON.stringify({ input }));
+  });
+  let createdId: string | undefined;
+  try {
+    const before = await db.select({ id: runsTable.id }).from(runsTable);
+    for (const value of ["hello", "This is just a long sentence without any useful information."]) {
+      const response = await post(value);
+      assert.equal(response.status, 400);
+      assert.equal(response.body.error, "That doesn't look like a CVE ID (like CVE-2024-3094) or advisory text. Paste a CVE ID or the full advisory.");
+    }
+    const after = await db.select({ id: runsTable.id }).from(runsTable);
+    assert.deepEqual(after.map((row) => row.id).sort(), before.map((row) => row.id).sort(),
+      "Rejected input must not create records counted by the daily cap");
+    const accepted = await post("Lodash versions before 4.17.21 are affected by the advisory.");
+    assert.equal(accepted.status, 201);
+    createdId = accepted.body.run.id;
+    assert.equal((await db.select().from(runsTable).where(eq(runsTable.idempotencyKey, key))).length, 1);
+  } finally {
+    if (createdId) await db.delete(runsTable).where(eq(runsTable.id, createdId));
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
 async function seedFirstTwo(id: string) {
   const context: PipelineContext = { input, priorOutputs: {}, degraded: true, fallbackSteps: [],
     llmDisabledReason: "Test: no LLM calls", attempts: {

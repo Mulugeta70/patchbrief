@@ -10,6 +10,7 @@ import { ArchitectureDiagram } from '@/components/architecture-diagram';
 import { BROWSER_RUNS_CHANGED, rememberBrowserRun } from '@/lib/browser-runs';
 import { runTitle } from '@/lib/browser-runs';
 import { faultTypesFor } from '@/lib/fault-types';
+import { isValidRunInput, RUN_INPUT_ERROR } from '@workspace/api-zod/run-input';
 import { ReplayControls, useReplay } from '@/components/replay-controls';
 import { describeApiError } from '@/lib/api-errors';
 import { CvssScores } from '@/components/advisory-evidence';
@@ -135,8 +136,8 @@ function Home() {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const value = input.trim();
-    if (!value) { setInputError('Add a CVE identifier or advisory text to begin.'); return; }
     if (value.length > MAX_INPUT) { setInputError(`Your text is ${value.length.toLocaleString()} characters; the limit is 20,000. Shorten it by ${(value.length - MAX_INPUT).toLocaleString()} characters and submit again. Nothing was sent and your text has been kept.`); return; }
+    if (!isValidRunInput(value)) { setInputError(RUN_INPUT_ERROR); return; }
     setInputError('');
     const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
@@ -155,7 +156,8 @@ function Home() {
           setInput('');
           setLocation(`/run/${encodeURIComponent(result.run.id)}`);
         },
-        onError: (failure) => setInputError(describeApiError(failure, 'The run could not be started. Check the input and try again.')),
+        onError: (failure) => setInputError((failure as { data?: { error?: string } })?.data?.error === RUN_INPUT_ERROR
+          ? RUN_INPUT_ERROR : describeApiError(failure, 'The run could not be started. Check the input and try again.')),
       },
     );
   };
@@ -172,10 +174,10 @@ function Home() {
             <div><h2 className="panel-title">New run</h2><p className="panel-subtitle">One identifier or the full advisory text.</p></div>
           </div>
           <label className="input-label" htmlFor="advisory-input">CVE ID or advisory</label>
-          <textarea id="advisory-input" className="input-control advisory-input" value={input} aria-invalid={input.length > MAX_INPUT} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\nor paste the vendor advisory here'} data-testid="input-advisory" />
+          <textarea id="advisory-input" className="input-control advisory-input" value={input} aria-invalid={!!inputError || input.length > MAX_INPUT} aria-describedby={inputError ? 'run-input-error' : undefined} onChange={(event) => { setInput(event.target.value); if (inputError) setInputError(''); }} placeholder={'CVE-2024-3094\n\nor paste the vendor advisory here'} data-testid="input-advisory" />
           <p className={`field-hint ${input.length > MAX_INPUT ? 'over' : ''}`} data-testid="text-input-count">The supplied text is the source material. {input.length.toLocaleString()} / 20,000 characters.{input.length > MAX_INPUT ? ' Over the limit; shorten before submitting.' : ''} Your draft is kept in this tab.</p>
           <BreakItPanel faults={faults} setFaults={setFaults} slowMode={slowMode} setSlowMode={setSlowMode} input={input} />
-          {inputError && <div className="error-box" role="alert" data-testid="status-submit-error">{inputError}</div>}
+          {inputError && <div id="run-input-error" className="error-box" role="alert" data-testid="status-submit-error">{inputError}</div>}
           <button className="submit-button" type="submit" disabled={createRun.isPending} data-testid="button-submit-run">
             <span>{createRun.isPending ? 'Starting review…' : 'Run assessment'}</span>
             <span className="submit-meta">{faults.length ? `${faults.length} fault${faults.length > 1 ? 's' : ''}` : ''}{slowMode ? `${faults.length ? ' / ' : ''}slow` : ''}</span>
